@@ -51,6 +51,8 @@ const state = {
   nodesPreview: false,
   reachTargets: null,
   activeGroup: null,
+  connFilter: '',
+  logFilter: '',
   nodeSort: 'default',
   netInfo: null,
   intranet: null,
@@ -582,6 +584,11 @@ async function testNodes(names) {
 }
 
 $('#btnTestAll').addEventListener('click', () => testNodes(allNodeNames()));
+$('#nodeSort').addEventListener('change', (e) => {
+  state.nodeSort = e.target.value || 'default';
+  renderGroups();
+});
+
 $('#nodeSearch').addEventListener('input', (e) => { state.nodeFilter = e.target.value; renderGroups(); });
 
 /* ---------------- 订阅 ---------------- */
@@ -956,7 +963,11 @@ function renderConnRows(rows) {
   }
   if (table) table.classList.remove('hidden');
   if (empty) empty.classList.add('hidden');
-  body.innerHTML = rows.slice(0, CONN_MAX_ROWS).map(connRowHtml).join('');
+  const kw = (state.connFilter || '').trim().toLowerCase();
+  const shown = kw
+    ? rows.filter((r) => JSON.stringify([r.host || r.dest || '', r.rule || '', (r.chains || []).join(' '), r.process || '']).toLowerCase().includes(kw))
+    : rows;
+  body.innerHTML = shown.slice(0, CONN_MAX_ROWS).map(connRowHtml).join('');
   body.querySelectorAll('.conn-close').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -971,6 +982,27 @@ function renderConnRows(rows) {
     });
   });
 }
+
+$('#connSearch').addEventListener('input', (e) => {
+  state.connFilter = e.target.value;
+  if (state.conns) renderConnRows(state.conns);
+});
+
+$('#btnCloseAllConns').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const n = (state.conns || []).length;
+  if (!confirm('关闭全部 ' + n + ' 条连接？')) return;
+  btn.disabled = true;
+  try {
+    const r = await api('/api/connections', { method: 'DELETE' });
+    toast('已关闭 ' + ((r && r.closed) || n) + ' 条连接', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  await loadConnections();
+});
 
 async function loadConnections() {
   let data;
@@ -1030,6 +1062,14 @@ function ensureLogStream() {
   };
 }
 
+$('#logSearch').addEventListener('input', (e) => {
+  state.logFilter = e.target.value;
+  const kw = (state.logFilter || '').trim().toLowerCase();
+  $('#logBox').querySelectorAll('div').forEach((el) => {
+    el.classList.toggle('hidden', !!kw && !el.textContent.toLowerCase().includes(kw));
+  });
+});
+
 function appendLog(d) {
   const box = $('#logBox');
   const cls = d.type === 'error' ? 'l-error'
@@ -1039,6 +1079,8 @@ function appendLog(d) {
   const line = document.createElement('div');
   if (cls) line.className = cls;
   line.textContent = String(d.payload == null ? '' : d.payload);
+  const kw = (state.logFilter || '').trim().toLowerCase();
+  if (kw && !line.textContent.toLowerCase().includes(kw)) line.classList.add('hidden');
   box.appendChild(line);
   while (box.childElementCount > 500) box.removeChild(box.firstChild);
   if ($('#logAuto').checked) box.scrollTop = box.scrollHeight;
@@ -1063,6 +1105,22 @@ async function loadSettings() {
     fillSettings(state.settings);
   } catch (e) { /* ignore */ }
 }
+
+$('#logLevelSel').addEventListener('change', async (e) => {
+  const lv = e.target.value;
+  try {
+    await api('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ ...state.settings, logLevel: lv }),
+    });
+    state.settings.logLevel = lv;
+    const set = $('#s-logLevel');
+    if (set) set.value = lv;
+    toast('日志级别已切换为 ' + lv);
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
 
 function syncLogLevelSel(level) {
   const sel = $('#logLevelSel');

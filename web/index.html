@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
 <title>Mihomo 魔方 · 路由面板</title>
-<link rel="stylesheet" href="app.css?v=1.5.9">
+<link rel="stylesheet" href="app.css?v=1.6.0">
 <link rel="icon" type="image/png" href="/icon-256.png">
 <link rel="apple-touch-icon" href="/icon-256.png">
 </head>
@@ -214,7 +214,8 @@
         <div class="card-head">
           <h2>活动连接</h2>
           <span class="muted" id="connUpdated">—</span>
-          <button class="text-btn" id="btnCloseAllConns" style="margin-left:auto">全部关闭</button>
+          <label class="field-search compact" style="margin-left:auto"><svg><use href="#i-search"/></svg><input id="connSearch" placeholder="过滤主机 / 规则"></label>
+          <button class="text-btn" id="btnCloseAllConns">全部关闭</button>
         </div>
         <div class="conn-table" id="connTable">
           <div class="conn-head">
@@ -239,6 +240,7 @@
             <option value="warning">warning</option>
             <option value="error">error</option>
           </select>
+          <label class="field-search compact"><svg><use href="#i-search"/></svg><input id="logSearch" placeholder="过滤日志"></label>
           <label class="check"><input type="checkbox" id="logAuto" checked><span>自动滚动</span></label>
           <label class="check"><input type="checkbox" id="logPause"><span>暂停</span></label>
         </div>
@@ -528,6 +530,6 @@
 </div>
 
 <div class="snackbar-wrap" id="toasts"></div>
-<script src="app.js?v=1.5.9"></script>
+<script src="app.js?v=1.6.0"></script>
 </body>
 </html>

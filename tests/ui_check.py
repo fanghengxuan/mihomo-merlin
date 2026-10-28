@@ -108,6 +108,20 @@ def main():
         if cls not in html_classes:
             errors.append(f"app.js 调用了 .closest('.{cls}')，但 HTML 里没有这个 class")
 
+
+    # 面板上的按钮/下拉必须真的绑定事件（曾出现「全部关闭」「排序」「日志级别」点了没反应）
+    for m in re.finditer(r'<(button|select)[^>]*id="([^"]+)"', html):
+        tag, cid = m.group(1), m.group(2)
+        if cid.startswith('s-') or cid.startswith('m-') or cid in ('f-subName','f-subUrl'):
+            continue
+        bound = False
+        for mm in re.finditer(r"\$\('#" + re.escape(cid) + r"'\).{0,200}", js, re.S):
+            if 'addEventListener' in mm.group(0):
+                bound = True
+                break
+        if not bound:
+            errors.append(f"控件 #{cid} 没有任何事件监听（点了没反应）")
+
     try:
         subprocess.run(["node", "--check", f"{ROOT}/app.js"], check=True, capture_output=True)
     except FileNotFoundError:
