@@ -185,6 +185,7 @@ func (a *App) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.mu.Lock()
+	prev := a.settings
 	s := a.settings
 	if err := s.applyPatch(patch); err != nil {
 		a.mu.Unlock()
@@ -194,6 +195,21 @@ func (a *App) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	a.settings = s
 	err := a.saveSettings()
 	a.mu.Unlock()
+
+	// 规则来源换了就要立刻重新下载，否则只是「设置里写了新来源、实际还用旧的 chnroute.txt」
+	ruleSourceChanged := prev.RuleSourcePreset != s.RuleSourcePreset || prev.RuleSourceURL != s.RuleSourceURL
+	if ruleSourceChanged {
+		go func() {
+			if _, rerr := a.UpdateRuleSet(""); rerr != nil {
+				a.addLog("warning", "规则来源已切换，但下载失败："+rerr.Error())
+				return
+			}
+			a.addLog("info", "规则来源已切换并重新下载完成")
+			if a.engine.Running() {
+				_ = a.engine.Reload()
+			}
+		}()
+	}
 	if err != nil {
 		writeErr(w, 500, "保存设置失败："+err.Error())
 		return

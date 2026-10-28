@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseCIDRList(t *testing.T) {
@@ -151,4 +154,38 @@ func TestPresetUpdateUsesMirrors(t *testing.T) {
 		t.Errorf("条数偏少: %d", meta.Count)
 	}
 	t.Logf("✓ 预设镜像回退生效：%s（%d 条）", meta.Source, meta.Count)
+}
+
+// 换规则来源时应当立刻重新下载，而不是只保存设置
+func TestRuleSourceChangeTriggersFetch(t *testing.T) {
+	hits := make(chan struct{}, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case hits <- struct{}{}:
+		default:
+		}
+		var b strings.Builder
+		for i := 0; i < 600; i++ {
+			fmt.Fprintf(&b, "10.%d.%d.0/24\n", i/256, i%256)
+		}
+		_, _ = io.WriteString(w, b.String())
+	}))
+	defer srv.Close()
+
+	a := newTestApp(t)
+	// 初始为默认预设，PUT 改成自定义来源 → 应检测到变化并重新下载
+	body := `{"ruleSourcePreset":"custom","ruleSourceURL":"` + srv.URL + `"}`
+	req := httptest.NewRequest("PUT", "/api/settings", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	a.handlePutSettings(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("保存设置应成功，实际 %d：%s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case <-hits:
+		t.Log("✓ 切换规则来源后立即重新下载")
+	case <-time.After(5 * time.Second):
+		t.Fatal("切换规则来源后没有触发下载")
+	}
 }
