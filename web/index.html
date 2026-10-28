@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>Mihomo 魔方 · 路由面板</title>
+<link rel="stylesheet" href="app.css?v=1.5.9">
+<link rel="icon" type="image/png" href="/icon-256.png">
+<link rel="apple-touch-icon" href="/icon-256.png">
+</head>
+<body>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-dash" viewBox="0 0 24 24"><path d="M4 13h7V4H4zM13 20h7v-9h-7zM4 20h7v-4H4zM13 8h7V4h-7z"/></symbol>
+  <symbol id="i-nodes" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="12" cy="18" r="2.3"/><path d="M7.7 7.6 11 15.7M16.3 7.6 13 15.7M8.3 6h7.4"/></symbol>
+  <symbol id="i-subs" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18.5" cy="17" r="2.2"/></symbol>
+  <symbol id="i-rules" viewBox="0 0 24 24"><path d="M6 4v16M6 8.5h9.5L14 11l1.5 2.5H6"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><path d="M5 6h14M5 11h14M5 16h9M5 20h11"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><path d="M12 3.2v2.3M12 18.5v2.3M5.1 7.6l2 1.1M16.9 15.3l2 1.1M5.1 16.4l2-1.1M16.9 8.7l2-1.1"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v7.5"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4.2v4.6h-4.6"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 5 13.8h5.8l-1 7.7 8.2-11.2H12z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l.9 12.5h9.2L17.5 7"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.3"/><path d="M15.8 15.8 20.5 20.5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3h-7A2.5 2.5 0 0 0 3 5.5v7A2.5 2.5 0 0 0 5.5 15"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M5.2 18.8l1.4-1.4M17.4 6.6l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.6A8.6 8.6 0 0 1 9.4 4a8.6 8.6 0 1 0 10.6 10.6z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.8 9.6 17.4 19 8"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4.5"/><path d="M7.5 9 12 4.5 16.5 9"/><path d="M4.5 15.5v3A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5v-3"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M4 9.5h9a5.5 5.5 0 1 1 0 11H9"/><path d="M7.5 5.5 3.5 9.5l4 4"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3.5v2M14 3.5v2M10 18.5v2M14 18.5v2M3.5 10h2M3.5 14h2M18.5 10h2M18.5 14h2"/></symbol>
+  <symbol id="i-conn" viewBox="0 0 24 24"><path d="M9.6 14.4 14.4 9.6"/><path d="M7.9 11.2 6 13.1a3.7 3.7 0 0 0 5.2 5.2l1.9-1.9"/><path d="M16.1 12.8 18 10.9a3.7 3.7 0 0 0-5.2-5.2l-1.9 1.9"/></symbol>
+</svg>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="rail-brand" title="Mihomo 魔方">
+      <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+        <defs><linearGradient id="mg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#35D0BA"/><stop offset="1" stop-color="#6E8FE8"/>
+        </linearGradient></defs>
+        <path d="M16 2.6 27.6 9.3v13.4L16 29.4 4.4 22.7V9.3z" fill="url(#mg)"/>
+        <path d="M10.2 20.6V11.6l5.8 4.9 5.8-4.9v9" fill="none" stroke="#0B1324" stroke-width="2.6"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <nav class="rail-nav" id="railNav">
+      <button class="rail-item active" data-view="overview"><svg><use href="#i-dash"/></svg><em>概览</em></button>
+      <button class="rail-item" data-view="nodes"><svg><use href="#i-nodes"/></svg><em>节点</em></button>
+      <button class="rail-item" data-view="subs"><svg><use href="#i-subs"/></svg><em>订阅</em></button>
+      <button class="rail-item" data-view="rules"><svg><use href="#i-rules"/></svg><em>规则</em></button>
+      <button class="rail-item" data-view="connections"><svg><use href="#i-conn"/></svg><em>连接</em></button>
+      <button class="rail-item" data-view="logs"><svg><use href="#i-logs"/></svg><em>日志</em></button>
+      <button class="rail-item" data-view="settings"><svg><use href="#i-settings"/></svg><em>设置</em></button>
+    </nav>
+    <button class="rail-theme" id="themeBtn" title="切换主题"><svg><use href="#i-sun"/></svg></button>
+  </aside>
+
+  <main class="main">
+    <header class="appbar">
+      <h1 id="viewTitle">概览</h1>
+      <div class="appbar-right">
+        <span class="chip status" id="enginePill"><i></i><span>未运行</span></span>
+      </div>
+    </header>
+
+    <!-- ================= 概览 ================= -->
+    <section class="view" id="view-overview">
+      <div class="dash">
+
+        <!-- 运行状态 -->
+        <div class="card dash-card span2 out-card">
+          <div class="card-head">
+            <h2>运行状态</h2>
+            <span class="muted" id="heroState">未连接</span>
+          </div>
+          <div class="out-main">
+            <div class="out-ip">
+              <span class="out-sub" id="heroSub">内核未启动</span>
+              <div class="kv out-node"><i>节点</i><b id="netNode">—</b><em id="netNodeDelay"></em></div>
+            </div>
+            <button class="power-ring" id="btnPowerRing" title="启动 / 停止代理">
+              <svg><use href="#i-power"/></svg>
+              <span class="ring-label" id="ringLabel">启动</span>
+            </button>
+          </div>
+          <div class="out-foot">
+            <span class="muted" id="outHint">流量经内核转发，切换节点只影响新连接</span>
+            <button class="btn tonal small hidden" id="btnRestart"><svg><use href="#i-refresh"/></svg><span>重启</span></button>
+          </div>
+        </div>
+
+        <!-- 流量 -->
+        <div class="card dash-card span2 traffic-card">
+          <div class="card-head"><h2>流量</h2><span class="muted">实时速率</span></div>
+          <canvas id="spark" height="80"></canvas>
+          <div class="traffic-row">
+            <div class="traffic-cell"><span class="lbl">↑ 上行</span><b id="upSpeed">0 B/s</b></div>
+            <div class="traffic-cell"><span class="lbl">↓ 下行</span><b id="downSpeed">0 B/s</b></div>
+            <div class="traffic-cell"><span class="lbl">累计</span><b id="totalTraffic">0 B</b></div>
+          </div>
+        </div>
+
+        <!-- 出站模式 -->
+        <div class="card dash-card span2 mode-card">
+          <div class="card-head"><h2>出站模式</h2><span class="muted" id="modeActual">规则模式</span></div>
+          <div class="segmented" id="modeSeg">
+            <button data-mode="rule"><svg class="tick"><use href="#i-check"/></svg>规则</button>
+            <button data-mode="global"><svg class="tick"><use href="#i-check"/></svg>全局</button>
+            <button data-mode="direct"><svg class="tick"><use href="#i-check"/></svg>直连</button>
+          </div>
+        </div>
+
+        <!-- 连接数 -->
+        <div class="card dash-card stat-card">
+          <span class="lbl">连接数</span><b class="big" id="statConns">0</b><span class="sub">活动连接</span>
+        </div>
+
+        <!-- 内存 -->
+        <div class="card dash-card stat-card">
+          <span class="lbl">内存占用</span><b class="big" id="statMem">—</b><span class="sub">内核进程</span>
+        </div>
+
+        <!-- 订阅概览 -->
+        <div class="card dash-card span4 subs-card">
+          <div class="card-head">
+            <h2>订阅</h2>
+            <div class="stat-row">
+              <div class="mini"><span>订阅</span><b id="statSubs">0</b></div>
+              <div class="mini"><span>节点</span><b id="statNodes">0</b></div>
+              <div class="mini"><span>运行</span><b id="statUptime">—</b></div>
+            </div>
+            <button class="text-btn" data-goto="subs">管理 →</button>
+          </div>
+          <div class="sub-summary" id="subSummary"></div>
+        </div>
+
+        <!-- 服务连通性 -->
+        <div class="card dash-card span4 reach-card">
+          <div class="card-head"><h2>服务连通性</h2><button class="text-btn" id="btnReachRefresh">刷新</button></div>
+          <div class="reach-grid" id="reachList"></div>
+        </div>
+      </div>
+
+      <div class="hidden"><span id="statLanIp"></span></div>
+    </section>
+
+    <!-- ================= 节点 ================= -->
+    <section class="view hidden" id="view-nodes">
+      <div class="toolbar">
+        <label class="field-search"><svg><use href="#i-search"/></svg><input id="nodeSearch" placeholder="搜索节点 / 订阅"></label>
+        <select id="nodeSort" class="select compact" title="排序方式">
+          <option value="default">默认顺序</option>
+          <option value="delay">延迟从低到高</option>
+          <option value="name">名称 A→Z</option>
+          <option value="nameDesc">名称 Z→A</option>
+        </select>
+        <button class="btn tonal" id="btnTestAll"><svg><use href="#i-bolt"/></svg><span>全部测速</span></button>
+      </div>
+      <div class="group-tabs" id="groupTabs"></div>
+      <div class="card hidden" id="nodesPreviewHint" style="margin-bottom:12px">
+        <p class="muted" style="margin:0">节点已从订阅中读取（预览）。点「概览 → 启动代理」后即可切换节点与测速。</p>
+      </div>
+      <div id="groups"></div>
+      <div class="empty hidden" id="nodesEmpty">
+        <svg><use href="#i-nodes"/></svg>
+        <p>还没有可用节点</p>
+        <button class="btn filled" data-goto="subs">去添加订阅</button>
+      </div>
+    </section>
+
+    <!-- ================= 订阅 ================= -->
+    <section class="view hidden" id="view-subs">
+      <div class="toolbar">
+        <span class="muted" id="subsHint">订阅会定时拉取并转换成 mihomo 节点</span>
+        <div class="toolbar-actions">
+          <button class="btn tonal" id="btnRefreshAll"><svg><use href="#i-refresh"/></svg><span>全部更新</span></button>
+          <button class="btn tonal" id="btnImportSub"><svg><use href="#i-upload"/></svg><span>导入配置</span></button>
+          <button class="btn filled" id="btnAddSub"><svg><use href="#i-plus"/></svg><span>添加订阅</span></button>
+        </div>
+      </div>
+      <div id="subList"></div>
+      <div class="empty hidden" id="subsEmpty">
+        <svg><use href="#i-subs"/></svg>
+        <p>还没有订阅</p>
+        <button class="btn filled" id="btnAddSub2">添加第一个订阅</button>
+      </div>
+    </section>
+
+    <!-- ================= 规则 ================= -->
+    <section class="view hidden" id="view-rules">
+      <div class="toolbar">
+        <label class="field-search"><svg><use href="#i-search"/></svg><input id="ruleSearch" placeholder="搜索规则"></label>
+        <select id="ruleFilter" class="select"><option value="">全部策略</option></select>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>生效规则</h2><span class="muted" id="ruleCount"></span></div>
+        <div class="rule-list" id="ruleList"></div>
+      </div>
+    </section>
+
+    <!-- ================= 连接 ================= -->
+    <section class="view hidden" id="view-connections">
+      <div class="conn-stats">
+        <div class="card tile"><span>连接数</span><b id="connCount">—</b></div>
+        <div class="card tile"><span>累计上行</span><b id="connUp">—</b></div>
+        <div class="card tile"><span>累计下行</span><b id="connDown">—</b></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>活动连接</h2>
+          <span class="muted" id="connUpdated">—</span>
+          <button class="text-btn" id="btnCloseAllConns" style="margin-left:auto">全部关闭</button>
+        </div>
+        <div class="conn-table" id="connTable">
+          <div class="conn-head">
+            <span>主机</span><span>规则</span><span>链路</span><span>流量</span><span>时长</span><span></span>
+          </div>
+          <div class="conn-body" id="connBody"></div>
+        </div>
+        <div class="empty hidden" id="connEmpty">
+          <svg><use href="#i-conn"/></svg>
+          <p>暂无活动连接</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 日志 ================= -->
+    <section class="view hidden" id="view-logs">
+      <div class="toolbar">
+        <div class="toolbar-actions">
+          <select id="logLevelSel" class="select compact" title="内核日志级别">
+            <option value="debug">debug</option>
+            <option value="info">info</option>
+            <option value="warning">warning</option>
+            <option value="error">error</option>
+          </select>
+          <label class="check"><input type="checkbox" id="logAuto" checked><span>自动滚动</span></label>
+          <label class="check"><input type="checkbox" id="logPause"><span>暂停</span></label>
+        </div>
+        <button class="btn text" id="btnClearLog">清屏</button>
+      </div>
+      <div class="card logcard"><pre id="logBox" class="logbox"></pre></div>
+    </section>
+
+    <!-- ================= 设置 ================= -->
+    <section class="view hidden" id="view-settings">
+      <div class="card">
+        <div class="card-head"><h2><svg class="head-ico"><use href="#i-chip"/></svg>mihomo 内核</h2></div>
+        <div class="kv">
+          <div><span>当前版本</span><b id="kVer">—</b></div>
+          <div><span>文件大小</span><b id="kSize">—</b></div>
+          <div><span>安装时间</span><b id="kMtime">—</b></div>
+          <div><span>SHA-256</span><code id="kSha">—</code></div>
+        </div>
+        <div class="dropzone" id="kDrop">
+          <svg><use href="#i-upload"/></svg>
+          <p><b>拖入 mihomo 二进制</b>，或点击选择文件</p>
+          <span class="muted">支持 linux-armv7 的原始可执行文件，或 GitHub release 的 <code>.gz</code>；上限 96 MB</span>
+          <input type="file" id="kFile" accept=".gz,application/octet-stream,*/*" hidden>
+        </div>
+        <div class="upload-progress hidden" id="kProgress">
+          <div class="bar"><span id="kBar"></span></div>
+          <div class="muted" id="kProgressText">准备上传…</div>
+        </div>
+        <div class="notice hidden" id="kResult"></div>
+        <div class="row-actions">
+          <button class="btn text" id="btnRollbackKernel"><svg><use href="#i-undo"/></svg><span>回滚上一版本</span></button>
+          <span class="muted" id="kBackupHint"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>引擎</h2></div>
+        <div class="kv">
+          <div><span>运行状态</span><span class="chip status" id="setEnginePill"><i></i><span>未运行</span></span></div>
+          <div><span>内核版本</span><b id="setEngineVer">—</b></div>
+          <div><span>转发规则</span><b id="setIptables">—</b></div>
+        </div>
+        <div class="row-actions">
+          <button class="btn tonal" id="btnReloadCfg"><svg><use href="#i-refresh"/></svg><span>重载配置</span></button>
+          <button class="btn text" id="btnRestart2">重启内核</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><svg class="head-ico"><use href="#i-chip"/></svg>服务状态</h2>
+          <button class="text-btn" id="btnSvcRefresh">刷新</button>
+        </div>
+        <div class="kv">
+          <div><span>内核可达性</span><b id="svcCore">—</b></div>
+          <div><span>转发规则</span><b id="svcIptables">—</b></div>
+          <div><span>端口</span><b id="svcPorts">—</b></div>
+          <div><span>实际模式</span><b id="svcMode">—</b></div>
+        </div>
+        <p class="muted" id="svcHint">每 5 秒自动刷新（仅本页可见时）</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>运行参数</h2></div>
+        <div class="form-grid">
+          <label class="field"><span>代理模式</span>
+            <select id="s-mode" class="select"><option value="rule">规则</option><option value="global">全局</option><option value="direct">直连</option></select>
+          </label>
+          <label class="field"><span>规则预设</span>
+            <select id="s-rulePreset" class="select"><option value="cn-direct">国内直连，其余走代理</option><option value="proxy-all">全部走代理</option></select>
+          </label>
+          <label class="field"><span>透明代理端口</span><input id="s-redirPort" type="number" min="1" max="65535"></label>
+          <label class="field"><span>混合端口 (HTTP/SOCKS)</span><input id="s-mixedPort" type="number" min="1" max="65535"></label>
+          <label class="field"><span>日志级别</span>
+            <select id="s-logLevel" class="select"><option value="silent">silent</option><option value="error">error</option><option value="warning">warning</option><option value="info">info</option><option value="debug">debug</option></select>
+          </label>
+          <label class="field"><span>订阅自动更新（小时，0 = 关闭）</span><input id="s-subInterval" type="number" min="0" max="168"></label>
+          <label class="field"><span>面板密码</span><input id="s-panelPassword" type="password" placeholder="留空则不校验"></label>
+        </div>
+        <div class="switch-grid">
+          <label class="switch"><input type="checkbox" id="s-allowLan"><i></i><span>允许局域网访问代理端口</span></label>
+          <label class="switch"><input type="checkbox" id="s-autoStart"><i></i><span>开机自启</span></label>
+          <label class="switch"><input type="checkbox" id="s-blockQuic"><i></i><span>阻断 QUIC（UDP 443）</span></label>
+          <label class="switch"><input type="checkbox" id="s-sniffer"><i></i><span>域名嗅探</span></label>
+          <label class="switch"><input type="checkbox" id="s-routerSelf"><i></i><span>同时代理路由器自身（实验）</span></label>
+        </div>
+        <div class="row-actions">
+          <button class="btn text" id="btnResetSettings">恢复默认</button>
+        </div>
+      </div>
+
+
+      <div class="card">
+        <div class="card-head"><h2>订阅拉取</h2></div>
+        <div class="form-grid">
+          <label class="field"><span>请求 UA 预设</span>
+            <select id="s-subUA" class="select">
+              <option value="default">默认（clash.meta）</option>
+              <option value="curl">curl/wget</option>
+              <option value="v2rayn">V2rayN</option>
+              <option value="v2rayng">V2rayNG</option>
+              <option value="shadowrocket">Shadowrocket</option>
+              <option value="custom">自定义</option>
+            </select>
+          </label>
+          <label class="field"><span>自定义 UA（选「自定义」时生效）</span><input id="s-subUACustom" placeholder="比如 ClashforWindows/0.20.39"></label>
+          <label class="field"><span>下载方式</span>
+            <select id="s-subProxyMode" class="select">
+              <option value="auto">自动（直连失败后走本机代理）</option>
+              <option value="direct">仅直连</option>
+              <option value="proxy">仅走代理</option>
+            </select>
+          </label>
+        </div>
+        <div class="switch-grid">
+          <label class="switch"><input type="checkbox" id="s-subInsecure"><i></i><span>跳过订阅证书校验（路由器时间不准时必需）</span></label>
+        </div>
+      </div>
+
+
+      <div class="card">
+        <div class="card-head"><h2>国内 IP 规则</h2><span class="muted" id="ruleMeta">—</span></div>
+        <p class="muted">用于「国内直连」判断。默认从内置镜像列表下载；也可填自己的规则源。</p>
+        <div class="form-grid">
+          <label class="field"><span>规则来源</span>
+            <select id="s-ruleSourcePreset" class="select">
+              <option value="chnroutes2">chnroutes2（推荐）· ≈3900 条</option>
+              <option value="17mon">17mon china_ip_list · ≈7400 条</option>
+              <option value="loyalsoldier">Loyalsoldier/geoip · ≈10000 条</option>
+              <option value="custom">自定义地址…</option>
+            </select>
+          </label>
+          <label class="field"><span>更新间隔（小时）</span>
+            <input id="s-ruleIntervalH" type="number" min="1" max="720" value="24">
+          </label>
+        </div>
+        <label class="field hidden" id="ruleCustomWrap"><span>自定义规则源（纯 CIDR 文本）</span>
+          <input id="s-ruleSourceURL" placeholder="https://…/chnroutes.txt">
+        </label>
+        <div class="switch-grid">
+          <label class="switch"><input type="checkbox" id="s-ruleAutoUpdate"><i></i><span>自动更新规则</span></label>
+        </div>
+        <div class="row-actions" style="margin-top:10px">
+          <button class="btn tonal" id="btnRuleUpdate">立即更新</button>
+        </div>
+      </div>
+
+
+      <div class="card">
+        <div class="card-head"><h2>定时重启</h2></div>
+        <p class="muted">内核长时间运行可能内存上涨，定时重启可保持稳定；面板本身不需要重启。</p>
+        <div class="form-grid">
+          <label class="field"><span>每 N 小时重启（1–168）</span>
+            <input id="s-restartEveryHours" type="number" min="1" max="168" value="24">
+          </label>
+          <label class="field"><span>每天固定时刻（HH:MM，留空则不用）</span>
+            <input id="s-restartAt" placeholder="03:30" inputmode="numeric" autocomplete="off">
+          </label>
+        </div>
+        <div class="switch-grid">
+          <label class="switch"><input type="checkbox" id="s-autoRestart"><i></i><span>启用定时重启</span></label>
+        </div>
+        <div class="kv" style="margin-top:14px">
+          <div><span>上次重启</span><b id="setLastRestart">—</b></div>
+          <div><span>下次重启</span><b id="setNextRestart">—</b></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>自动选择</h2></div>
+        <p class="muted">按延迟自动挑选最快节点。间隔越短故障切换越快但更耗流量；容差用于避免在相近延迟的节点之间来回抖。</p>
+        <div class="form-grid">
+          <label class="field"><span>检查间隔（秒，30–3600）</span>
+            <input id="s-autoIntervalSec" type="number" min="30" max="3600" value="300">
+          </label>
+          <label class="field"><span>容差（毫秒，0–1000）</span>
+            <input id="s-autoToleranceMs" type="number" min="0" max="1000" value="50">
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>存储占用</h2><span class="muted" id="storageMeta">—</span></div>
+        <p class="muted" id="storageDetail">路由器 jffs 分区较小，日志、内核备份与订阅缓存会定期自动清理。</p>
+        <div class="row-actions" style="margin-top:10px">
+          <button class="btn tonal" id="btnStorageClean">立即清理</button>
+        </div>
+      </div>
+
+      <div class="settings-footer">
+        <button class="btn filled" id="btnSaveSettingsBottom">保存全部设置</button>
+        <span class="muted">改动都在这一处保存；定时重启、自动选择、规则来源和订阅拉取参数改完会自动保存</span>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>关于</h2></div>
+        <div class="kv">
+          <div><span>面板版本</span><b id="aboutVer">—</b></div>
+          <div><span>平台</span><b id="aboutPlatform">linux/arm</b></div>
+          <div><span>数据目录</span><code id="aboutData">—</code></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="active" data-view="overview"><svg><use href="#i-dash"/></svg><em>概览</em></button>
+    <button data-view="nodes"><svg><use href="#i-nodes"/></svg><em>节点</em></button>
+    <button data-view="subs"><svg><use href="#i-subs"/></svg><em>订阅</em></button>
+    <button data-view="rules"><svg><use href="#i-rules"/></svg><em>规则</em></button>
+    <button data-view="connections"><svg><use href="#i-conn"/></svg><em>连接</em></button>
+    <button data-view="settings"><svg><use href="#i-settings"/></svg><em>设置</em></button>
+  </nav>
+</div>
+
+
+
+
+<!-- 原始内容弹窗 -->
+<div class="scrim hidden" id="rawModal">
+  <div class="dialog wide">
+    <h2 id="rawTitle">订阅原始内容</h2>
+    <p class="muted" id="rawMeta"></p>
+    <pre class="prog-log" id="rawBody" style="white-space:pre-wrap;max-height:340px"></pre>
+    <div class="row-actions">
+      <span style="flex:1"></span>
+      <button class="btn text" id="rawClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入配置弹窗 -->
+<div class="scrim hidden" id="importModal">
+  <div class="dialog wide">
+    <h2>导入配置</h2>
+    <p class="muted">把在电脑上抓好的订阅内容粘进来（Clash YAML、base64 或明文节点链接都行）。订阅地址在路由器上拉不动时用它。</p>
+    <label class="field"><span>名称</span><input id="f-importName" placeholder="比如 机场A"></label>
+    <label class="field"><span>配置内容</span>
+      <textarea id="f-importContent" rows="9" placeholder="proxies: …&#10;或&#10;ss://… / vmess://…"></textarea>
+    </label>
+    <div class="row-actions">
+      <button class="btn text" id="btnImportFile">从文件读取</button>
+      <input type="file" id="importFile" accept=".yaml,.yml,.txt,.json,text/*" hidden>
+      <span style="flex:1"></span>
+      <button class="btn text" id="importCancel">取消</button>
+      <button class="btn filled" id="importSave">导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 订阅弹窗 -->
+<div class="scrim hidden" id="subModal">
+  <div class="dialog">
+    <h2 id="subModalTitle">添加订阅</h2>
+    <label class="field"><span>名称</span><input id="f-subName" placeholder="比如 机场A"></label>
+    <label class="field"><span>订阅链接</span><input id="f-subUrl" placeholder="https://..." inputmode="url"></label>
+    <label class="field"><span>自动更新间隔（小时，0 跟随全局）</span><input id="f-subInterval" type="number" min="0" max="168" value="0"></label>
+    <div class="prog-log hidden" id="subProgLog"></div>
+    <div class="dialog-actions">
+      <button class="btn text" id="subModalCancel">取消</button>
+      <button class="btn filled" id="subModalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 登录弹窗 -->
+<div class="scrim hidden" id="loginModal">
+  <div class="dialog">
+    <h2>需要登录</h2>
+    <p class="muted">面板设置了访问密码</p>
+    <label class="field"><span>密码</span><input id="f-password" type="password" autocomplete="current-password"></label>
+    <div class="dialog-actions"><button class="btn filled" id="loginBtn">登录</button></div>
+  </div>
+</div>
+
+<!-- 出站详情弹窗 -->
+<div class="scrim hidden" id="progModal">
+  <div class="dialog wide">
+    <h2 id="progTitle">正在处理…</h2>
+    <div class="prog-log" id="progLog"></div>
+    <div class="row-actions">
+      <span class="muted" id="progElapsed">0.0s</span>
+      <span style="flex:1"></span>
+      <button class="btn text hidden" id="progClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="snackbar-wrap" id="toasts"></div>
+<script src="app.js?v=1.5.9"></script>
+</body>
+</html>

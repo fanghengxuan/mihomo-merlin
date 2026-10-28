@@ -1,0 +1,24 @@
+# 构建产物
+dist/
+*.tar.gz
+*.upx
+panel
+mihomo-panel
+mihomo-merlin
+
+# 本地缓存（内核下载、工具链）
+.cache/
+tmp/
+log/
+
+# macOS
+.DS_Store
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+
+# 测试临时目录
+/mmtest*/
+/tmp/
