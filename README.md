@@ -1,5 +1,9 @@
 # mihomo-merlin
 
+[![ci](https://github.com/fanghengxuan/mihomo-merlin/actions/workflows/ci.yml/badge.svg)](https://github.com/fanghengxuan/mihomo-merlin/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![release](https://img.shields.io/github/v/release/fanghengxuan/mihomo-merlin)](https://github.com/fanghengxuan/mihomo-merlin/releases)
+
 **给华硕梅林（koolshare 软件中心）路由器用的 mihomo 代理插件**：内核用 [mihomo](https://github.com/MetaCubeX/mihomo)，
 自带一个仿 FlClash 观感的 Web 面板，打包成软件中心可直接离线安装的 `tar.gz`。
 
@@ -17,7 +21,7 @@
 
 ## 快速开始
 
-1. 下载 Release 里的 `mihomo_<版本>_armv7.tar.gz`
+1. 到 [Releases](https://github.com/fanghengxuan/mihomo-merlin/releases) 下载 `mihomo_<版本>_armv7.tar.gz`
 2. 路由器 → 软件中心 → 离线安装 → 选择该文件（安装完成后页面会自动刷新）
 3. 浏览器打开 `http://<路由器IP>:9380`
 4. 「订阅」→ 粘贴机场订阅链接 → 添加 → 「节点」→ 选择分组与节点 → 概览里点圆环启动
