@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build (linux/armv7)
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o /tmp/mihomo-panel .
+
+      - name: 前端静态检查
+        run: python3 tests/ui_check.py
+
+      - name: 单元测试
+        run: go test ./... -count=1
