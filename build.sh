@@ -153,7 +153,7 @@ else
 			[ -s "$CACHE/chnroute.txt" ] || { echo "缓存里没有规则"; exit 1; }
 			;;
 	esac
-	KERNEL_BIN="$CACHE/mihomo-linux-armv7-${MIHOMO_VERSION}"
+	KERNEL_BIN="$CACHE/mihomo-linux-armv7-${MIHOMO_VERSION}-slim"
 fi
 [ -s "$CACHE/chnroute.txt" ] || { [ -s "$CACHE/chnroute.txt" ] || fetch_rules; }
 
