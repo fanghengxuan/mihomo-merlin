@@ -419,6 +419,8 @@ sh tests/e2e.sh
 「设置 → mihomo 内核」：
 
 - 显示当前内核的版本、大小、安装时间、SHA-256、可回滚版本
+- **检查更新 / 立即更新**：直接查 [fanghengxuan/mihomo](https://github.com/fanghengxuan/mihomo) 的 `slim-*` Release，
+  匹配 `mihomo-linux-armv7-slim-*` 资产；下载后同样做 ELF / `-v` / `-t` 校验，失败自动回滚
 - **拖入**或点击选择新的内核文件（`linux-armv7` 原始 ELF，或 GitHub release 的 `.gz`，上限 96 MB）
 - 服务端依次校验：ELF 架构（32 位 ARM）→ 能否 `-v` → 能否用**当前配置** `-t` → 备份旧版本 → 替换并重启
 - 任一步失败都不写入磁盘；若替换后内核起不来，**自动回滚**并提示

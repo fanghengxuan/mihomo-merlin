@@ -181,76 +181,95 @@ func (a *App) handleKernelUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	if err := inspectELF(payload); err != nil {
-		writeErr(w, 400, err.Error())
+
+	res, herr := a.installKernelBytes(payload, hdr.Filename)
+	if herr != nil {
+		writeErr(w, herr.code, herr.msg)
 		return
 	}
+	a.addLog("info", fmt.Sprintf("内核已更新：%s（上传文件 %s，%s）", res.Version, hdr.Filename,
+		map[bool]string{true: "已解压 gzip", false: "原始 ELF"}[wasGz]))
+	writeJSON(w, 200, map[string]any{
+		"ok":         res.OK,
+		"message":    res.Message,
+		"version":    res.Version,
+		"restarted":  res.Restarted,
+		"rolledBack": res.RolledBack,
+		"error":      res.Error,
+		"kernel":     a.currentKernelInfo(),
+	})
+}
 
+// installResult 是一次内核安装的结果（上传与在线更新共用）。
+type installResult struct {
+	OK         bool
+	Message    string
+	Version    string
+	Restarted  bool
+	RolledBack bool
+	Error      string
+}
+
+type installError struct {
+	code int
+	msg  string
+}
+
+// installKernelBytes 校验（ELF / -v / -t）并替换内核；失败不落盘，启动失败自动回滚。
+// 调用方需持有 a.kernelMu。
+func (a *App) installKernelBytes(payload []byte, label string) (*installResult, *installError) {
+	if err := inspectELF(payload); err != nil {
+		return nil, &installError{400, err.Error()}
+	}
 	if err := os.MkdirAll(a.kernelDir(), 0o755); err != nil {
-		writeErr(w, 500, "创建内核目录失败："+err.Error())
-		return
+		return nil, &installError{500, "创建内核目录失败：" + err.Error()}
 	}
 	tmp := filepath.Join(a.kernelDir(), fmt.Sprintf("upload-%d", time.Now().UnixNano()))
 	if err := os.WriteFile(tmp, payload, 0o755); err != nil {
-		writeErr(w, 500, "写入临时文件失败："+err.Error())
-		return
+		return nil, &installError{500, "写入临时文件失败：" + err.Error()}
 	}
 	defer func() { _ = os.Remove(tmp) }()
 
 	ver, err := a.readKernelVersion(tmp)
 	if err != nil {
-		writeErr(w, 400, "这个文件跑不起来："+err.Error())
-		return
+		return nil, &installError{400, "这个文件跑不起来：" + err.Error()}
 	}
-
-	// 用现有配置做一次 -t 校验，确认新内核认得我们的配置
 	if err := a.appReloadDryRun(tmp); err != nil {
-		writeErr(w, 400, "新内核不接受当前配置："+err.Error())
-		return
+		return nil, &installError{400, "新内核不接受当前配置：" + err.Error()}
 	}
 
-	// 备份当前内核
 	if kb := a.backupCurrentKernel(); kb != nil {
 		a.addLog("info", fmt.Sprintf("已备份旧内核：%s", kb.Version))
 	}
-
 	if err := replaceFile(tmp, a.mihomoPath); err != nil {
-		writeErr(w, 500, "替换内核失败："+err.Error())
-		return
+		return nil, &installError{500, "替换内核失败：" + err.Error()}
 	}
 	_ = os.Chmod(a.mihomoPath, 0o755)
 	_ = removeIfExists(filepath.Join(a.dataDir, ".config.stamp"))
 
+	res := &installResult{OK: true, Version: ver}
 	wasRunning := a.engine.Running()
-	restartErr := ""
 	if wasRunning {
 		if err := a.engine.Restart(); err != nil {
-			restartErr = err.Error()
-			// 新内核能 -v 但起不来：自动回滚
-			a.addLog("error", "新内核启动失败，自动回滚："+restartErr)
+			a.addLog("error", "新内核启动失败，自动回滚："+err.Error())
 			if kb := a.loadBackupMeta(); kb != nil {
 				if err := replaceFile(kb.Path, a.mihomoPath); err == nil {
 					_ = a.engine.Restart()
 				}
 			}
-			writeJSON(w, 200, map[string]any{
-				"ok":         false,
-				"error":      "新内核已通过校验，但启动失败，已回滚旧版本：" + restartErr,
-				"kernel":     a.currentKernelInfo(),
-				"rolledBack": true,
-			})
-			return
+			res.OK = false
+			res.RolledBack = true
+			res.Error = "新内核已通过校验，但启动失败，已回滚旧版本：" + err.Error()
+			res.Message = "启动失败，已回滚"
+			return res, nil
 		}
+		res.Restarted = true
+		res.Message = "内核已更新并重启"
+	} else {
+		res.Message = "内核已更新"
 	}
-
-	a.addLog("info", fmt.Sprintf("内核已更新：%s（上传文件 %s，%s）", ver, hdr.Filename, map[bool]string{true: "已解压 gzip", false: "原始 ELF"}[wasGz]))
-	writeJSON(w, 200, map[string]any{
-		"ok":        true,
-		"message":   "内核已更新" + map[bool]string{true: "并重启", false: ""}[wasRunning],
-		"version":   ver,
-		"restarted": wasRunning,
-		"kernel":    a.currentKernelInfo(),
-	})
+	_ = label
+	return res, nil
 }
 
 // appReloadDryRun 用指定内核跑一次 `-t` 配置校验。

@@ -1747,6 +1747,69 @@ $('#kFile').addEventListener('change', (e) => {
   });
 });
 
+/* ---------------- 内核在线更新 ---------------- */
+
+function kernelUpdateHint(text, kind) {
+  const el = $('#kUpdateHint');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'muted' + (kind === 'err' ? ' err-text' : '');
+}
+
+$('#btnKernelCheck').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  kernelUpdateHint('正在检查更新…');
+  try {
+    const r = await api('/api/kernel/check');
+    if (!r.ok) {
+      kernelUpdateHint('检查失败：' + (r.error || '未知错误'), 'err');
+      return;
+    }
+    const cur = r.current || '未知';
+    if (!r.hasUpdate) {
+      kernelUpdateHint('已是最新（' + cur + '）');
+      $('#btnKernelUpdate').classList.add('hidden');
+      return;
+    }
+    kernelUpdateHint('发现新版本 ' + r.latest + '（' + fmtBytes(r.size) + '），当前 ' + cur);
+    $('#btnKernelUpdate').classList.remove('hidden');
+    state.kernelLatest = r;
+  } catch (err) {
+    kernelUpdateHint('检查失败：' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#btnKernelUpdate').addEventListener('click', async (e) => {
+  const info = state.kernelLatest;
+  if (!info) { toast('请先检查更新', 'err'); return; }
+  if (!window.confirm('下载并安装内核 ' + info.latest + '？安装过程会重启内核，连接会短暂中断。')) return;
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  kernelUpdateHint('正在下载并安装 ' + info.latest + '…（约 ' + fmtBytes(info.size) + '）');
+  try {
+    const r = await api('/api/kernel/update', { method: 'POST' });
+    if (r.ok) {
+      kernelUpdateHint('已更新到 ' + r.version + (r.restarted ? '（已重启）' : ''));
+      showKernelResult(r.message || '内核已更新', 'ok');
+      toast('内核已更新', 'ok');
+    } else {
+      kernelUpdateHint(r.error || '更新失败', 'err');
+      showKernelResult(r.error || '更新失败', 'err');
+    }
+    await loadKernel();
+    await loadStatus();
+    $('#btnKernelUpdate').classList.add('hidden');
+  } catch (err) {
+    kernelUpdateHint('更新失败：' + err.message, 'err');
+    showKernelResult(err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 $('#btnRollbackKernel').addEventListener('click', async () => {
   if (!window.confirm('回滚到上一个内核版本？')) return;
   const btn = $('#btnRollbackKernel');

@@ -2,7 +2,7 @@
 # mihomo-merlin 构建脚本：交叉编译面板 + 拉取内核/规则 + 打包成软件中心可安装的 tar.gz
 #
 # 用法：
-#   ./build.sh                        # 完整打包（armv7，自动下载官方内核）
+#   ./build.sh                        # 完整打包（armv7，自动下载 fork 的 slim 内核）
 #   ./build.sh --kernel /path/to/mihomo   # 用自己提供的内核（例如 UPX 精简版）
 #   ./build.sh --no-download          # 只用本地缓存的内核与规则
 #   ./build.sh --dev                  # 额外编译一个本机（darwin/arm64）可跑的 panel，便于本地调试
@@ -18,7 +18,10 @@ KERNEL_BIN=""                     # 最终打进包里的内核
 CHNROUTE_URLS="https://cdn.jsdelivr.net/gh/hq450/fancyss@3.0/rules_ng/chnroute.txt
 https://raw.githubusercontent.com/hq450/fancyss/3.0/rules_ng/chnroute.txt
 https://gitee.com/raw/hq450/fancyss/3.0/rules_ng/chnroute.txt"
-MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-armv7-${MIHOMO_VERSION}.gz"
+# 内核默认取本仓库 fork 的 slim 构建（体积小、适配低内存路由器）
+# 也可用 --kernel 指定本地文件，或用 MIHOMO_URL 覆盖
+KERNEL_REPO="${KERNEL_REPO:-fanghengxuan/mihomo}"
+MIHOMO_URL="${MIHOMO_URL:-https://github.com/${KERNEL_REPO}/releases/download/slim-${MIHOMO_VERSION}/mihomo-linux-armv7-slim-${MIHOMO_VERSION}}"
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 CACHE="$ROOT/.cache"
@@ -33,14 +36,20 @@ need "$GO"; need curl; need tar; need gzip
 mkdir -p "$CACHE" "$DIST"
 
 fetch_mihomo() {
-	out="$CACHE/mihomo-linux-armv7-${MIHOMO_VERSION}"
+	out="$CACHE/mihomo-linux-armv7-${MIHOMO_VERSION}-slim"
 	if [ -s "$out" ]; then
 		echo ">>> 使用缓存内核：$out"
 		return 0
 	fi
-	echo ">>> 下载 mihomo ${MIHOMO_VERSION} (linux-armv7)"
-	curl -fL --retry 3 -o "$out.gz" "$MIHOMO_URL"
-	gunzip -f "$out.gz"
+	echo ">>> 下载 mihomo ${MIHOMO_VERSION} slim 构建（${KERNEL_REPO}）"
+	curl -fL --retry 3 -o "$out.part" "$MIHOMO_URL"
+	# 兼容 .gz 资产与原始 ELF 资产
+	if gzip -t "$out.part" 2>/dev/null; then
+		mv "$out.part" "$out.gz"
+		gunzip -f "$out.gz"
+	else
+		mv "$out.part" "$out"
+	fi
 	chmod +x "$out"
 }
 
@@ -140,7 +149,7 @@ else
 			fetch_rules
 			;;
 		offline)
-			[ -s "$CACHE/mihomo-linux-armv7-${MIHOMO_VERSION}" ] || { echo "缓存里没有内核"; exit 1; }
+			[ -s "$CACHE/mihomo-linux-armv7-${MIHOMO_VERSION}-slim" ] || { echo "缓存里没有内核"; exit 1; }
 			[ -s "$CACHE/chnroute.txt" ] || { echo "缓存里没有规则"; exit 1; }
 			;;
 	esac

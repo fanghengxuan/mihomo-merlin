@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const panelVersion = "1.7.0"
+const panelVersion = "1.7.1"
 
 // panelPort 管理面板监听端口（插件安装脚本与 ASP 都按此端口访问）
 const panelPort = 9380
@@ -260,6 +260,8 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/rules", a.handleRules)
 	mux.HandleFunc("GET /api/netinfo", a.handleNetInfo)
+	mux.HandleFunc("GET /api/kernel/check", a.handleKernelCheck)
+	mux.HandleFunc("POST /api/kernel/update", a.handleKernelUpdate)
 	mux.HandleFunc("GET /api/backup", a.handleBackup)
 	mux.HandleFunc("POST /api/restore", a.handleRestore)
 	mux.HandleFunc("GET /api/storage", a.handleStorage)
