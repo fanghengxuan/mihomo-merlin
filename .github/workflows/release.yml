@@ -1,0 +1,52 @@
+name: release-package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '插件版本（需与 plugin/version 一致，如 1.7.1）'
+        required: true
+        default: '1.7.1'
+      attach:
+        description: '附加到已有 Release（v<version>），否则只上传 artifact'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: 构建安装包（内核取自 fanghengxuan/mihomo 的 slim release）
+        run: |
+          chmod +x build.sh
+          ./build.sh 2>&1 | tail -20
+
+      - name: 产出校验值
+        run: |
+          cd dist && ls -l && sha256sum mihomo_*.tar.gz > mihomo_*.sha256 && cat *.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ inputs.version }}
+          path: dist/mihomo_*
+
+      - name: 附加到 Release
+        if: ${{ inputs.attach }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v${{ inputs.version }}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "$tag" --notes "由 CI 构建的安装包"
+          fi
+          gh release upload "$tag" dist/mihomo_${{ inputs.version }}_armv7.tar.gz dist/mihomo_${{ inputs.version }}_armv7.tar.gz.sha256 --clobber
