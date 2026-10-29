@@ -184,6 +184,7 @@ func TestRuleSourceChangeTriggersFetch(t *testing.T) {
 
 	select {
 	case <-hits:
+		a.bgTasks.Wait() // 等异步下载真正写完，避免和 TempDir 清理冲突
 		t.Log("✓ 切换规则来源后立即重新下载")
 	case <-time.After(5 * time.Second):
 		t.Fatal("切换规则来源后没有触发下载")

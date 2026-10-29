@@ -345,3 +345,24 @@ SSE 断线由前端自动重连（EventSource 自带）。
 #### `DELETE /api/connections/{id}` 与 `DELETE /api/connections`
 
 关闭单条连接 / 全部连接。返回 `{"ok":true}` / `{"ok":true,"closed":N}`；内核未运行时 `{"ok":false,"err":"内核未运行"}`。
+
+## 备份与恢复（1.7.0）
+
+### GET /api/backup
+导出完整备份（JSON 下载）：`kind`、`format`、`panelVersion`、`exportedAt`、`settings`、
+`subs`（含订阅地址与令牌）、`providers`（订阅 id → 节点文件内容）、`rulesMeta`。
+
+### POST /api/restore
+请求体为上面的备份 JSON（≤16MB）。校验 `kind == "mihomo-merlin-backup"` 且 `format <= 1`；
+设置以默认值起步再覆盖备份里出现的字段（老备份缺字段不会把 allowLan/autoStart 清成 false）；
+订阅与节点文件一并写回，内核运行中会热重载。
+
+## DNS 设置（1.7.0）
+
+`settings` 新增：`dnsEnable`、`dnsMode`（redir-host|fake-ip）、`dnsListen`、`dnsNameserver`、
+`dnsFallback`、`dnsFakeIpRange`。开启后配置里生成 `dns:` 段，fake-ip 模式自动带 `fake-ip-filter`。
+
+## 订阅节点过滤（1.7.0）
+
+订阅对象新增 `includeFilter` / `excludeFilter`（正则），写到 mihomo `proxy-provider` 的
+`filter` / `exclude-filter`，由内核加载节点时过滤。

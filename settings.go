@@ -44,6 +44,14 @@ type Settings struct {
 	AutoIntervalSec int `json:"autoIntervalSec"` // 测速间隔秒（30..3600）
 	AutoToleranceMs int `json:"autoToleranceMs"` // 容差毫秒（0..1000）
 
+	// DNS（默认关闭，路由器上通常交给 dnsmasq；需要 fake-ip/自定义上游时再开）
+	DNSEnable      bool   `json:"dnsEnable"`
+	DNSMode        string `json:"dnsMode"`        // redir-host | fake-ip
+	DNSListen      string `json:"dnsListen"`      // 如 0.0.0.0:1053，空=不监听
+	DNSNameserver  string `json:"dnsNameserver"`  // 逗号分隔，如 "223.5.5.5,119.29.29.29"
+	DNSFallback    string `json:"dnsFallback"`    // 逗号分隔，如 "1.1.1.1,8.8.8.8"
+	DNSFakeIPRange string `json:"dnsFakeIpRange"` // fake-ip 网段，仅 fake-ip 模式
+
 	// 内部字段，不通过 API 暴露
 	ClashSecret string `json:"clashSecret"`
 	APIPort     int    `json:"apiPort"`
@@ -74,6 +82,13 @@ func defaultSettings() Settings {
 		RestartAt:         "",
 		AutoIntervalSec:   300,
 		AutoToleranceMs:   50,
+
+		DNSEnable:      false,
+		DNSMode:        "redir-host",
+		DNSListen:      "",
+		DNSNameserver:  "223.5.5.5,119.29.29.29",
+		DNSFallback:    "1.1.1.1,8.8.8.8",
+		DNSFakeIPRange: "198.18.0.1/16",
 
 		APIPort: 9090,
 	}
@@ -183,6 +198,29 @@ func (s *Settings) applyPatch(p map[string]any) error {
 	}
 	if v, ok := p["subUACustom"].(string); ok {
 		s.SubUACustom = strings.TrimSpace(v)
+	}
+	if v, ok := p["dnsEnable"].(bool); ok {
+		s.DNSEnable = v
+	}
+	if v, ok := p["dnsMode"].(string); ok {
+		switch v {
+		case "redir-host", "fake-ip":
+			s.DNSMode = v
+		default:
+			return errors.New("DNS 模式只能是 redir-host 或 fake-ip")
+		}
+	}
+	if v, ok := p["dnsListen"].(string); ok {
+		s.DNSListen = strings.TrimSpace(v)
+	}
+	if v, ok := p["dnsNameserver"].(string); ok {
+		s.DNSNameserver = strings.TrimSpace(v)
+	}
+	if v, ok := p["dnsFallback"].(string); ok {
+		s.DNSFallback = strings.TrimSpace(v)
+	}
+	if v, ok := p["dnsFakeIpRange"].(string); ok {
+		s.DNSFakeIPRange = strings.TrimSpace(v)
 	}
 	if v, ok := p["ruleSourcePreset"].(string); ok {
 		s.RuleSourcePreset = strings.TrimSpace(v)

@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const panelVersion = "1.6.1"
+const panelVersion = "1.7.0"
 
 // panelPort 管理面板监听端口（插件安装脚本与 ASP 都按此端口访问）
 const panelPort = 9380
@@ -26,6 +26,8 @@ const panelPort = 9380
 var webAssets embed.FS
 
 type App struct {
+	// 后台规则下载的等待组：方便测试等到异步任务真正结束，避免和临时目录清理赛跑
+	bgTasks   sync.WaitGroup
 	netInfo   netInfoCache
 	reach     reachCache
 	mu        sync.RWMutex
@@ -258,6 +260,8 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/rules", a.handleRules)
 	mux.HandleFunc("GET /api/netinfo", a.handleNetInfo)
+	mux.HandleFunc("GET /api/backup", a.handleBackup)
+	mux.HandleFunc("POST /api/restore", a.handleRestore)
 	mux.HandleFunc("GET /api/storage", a.handleStorage)
 	mux.HandleFunc("POST /api/storage/clean", a.handleStorageClean)
 	mux.HandleFunc("GET /api/rules/set", a.handleRuleSetInfo)

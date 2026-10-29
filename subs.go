@@ -40,6 +40,9 @@ type Sub struct {
 	Error     string   `json:"error"`
 	Traffic   *Traffic `json:"traffic"`
 	Skipped   int      `json:"skipped"`
+	// 节点过滤（对应 mihomo proxy-provider 的 filter / exclude-filter，正则）
+	IncludeFilter string `json:"includeFilter"`
+	ExcludeFilter string `json:"excludeFilter"`
 }
 
 const userAgent = "clash.meta/1.19.33"

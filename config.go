@@ -77,6 +77,9 @@ func (a *App) BuildConfig() (map[string]any, error) {
 			"store-fake-ip":  true,
 		},
 	}
+	if s.DNSEnable {
+		cfg["dns"] = buildDNSSection(s)
+	}
 	if s.Sniffer {
 		cfg["sniffer"] = map[string]any{
 			"enable":               true,
@@ -94,7 +97,7 @@ func (a *App) BuildConfig() (map[string]any, error) {
 	var subGroups []any
 	for _, sub := range enabled {
 		id := sub.ID
-		providers[id] = map[string]any{
+		entry := map[string]any{
 			"type": "file",
 			"path": a.providerPath(id),
 			"override": map[string]any{
@@ -102,6 +105,13 @@ func (a *App) BuildConfig() (map[string]any, error) {
 				"udp":               true,
 			},
 		}
+		if f := strings.TrimSpace(sub.IncludeFilter); f != "" {
+			entry["filter"] = f
+		}
+		if f := strings.TrimSpace(sub.ExcludeFilter); f != "" {
+			entry["exclude-filter"] = f
+		}
+		providers[id] = entry
 		useIDs = append(useIDs, id)
 		// 子分组只挂自己的 provider：默认选中第一个节点，而不是 DIRECT
 		subGroups = append(subGroups, map[string]any{
@@ -232,3 +242,47 @@ func normalizeProviderPath(p string) string {
 
 var _ = normalizeProviderPath
 var _ = os.Remove
+
+// buildDNSSection 按设置生成 mihomo 的 dns 段。
+func buildDNSSection(s Settings) map[string]any {
+	nameservers := splitCommaList(s.DNSNameserver)
+	fallbacks := splitCommaList(s.DNSFallback)
+	dns := map[string]any{
+		"enable":             true,
+		"ipv6":               false,
+		"enhanced-mode":      s.DNSMode,
+		"use-hosts":          true,
+		"use-system-hosts":   true,
+		"respect-rules":      false,
+		"default-nameserver": []any{"223.5.5.5", "119.29.29.29"},
+		"nameserver":         toAnySlice(nameservers),
+	}
+	if len(fallbacks) > 0 {
+		dns["fallback"] = toAnySlice(fallbacks)
+	}
+	if s.DNSMode == "fake-ip" {
+		rng := strings.TrimSpace(s.DNSFakeIPRange)
+		if rng == "" {
+			rng = "198.18.0.1/16"
+		}
+		dns["fake-ip-range"] = rng
+		dns["fake-ip-filter"] = []any{
+			"*.lan", "*.local", "*.localdomain", "localhost.ptlogin2.qq.com",
+			"+.msftconnecttest.com", "+.msftncsi.com",
+		}
+	}
+	if listen := strings.TrimSpace(s.DNSListen); listen != "" {
+		dns["listen"] = listen
+	}
+	return dns
+}
+
+func splitCommaList(v string) []string {
+	out := []string{}
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}

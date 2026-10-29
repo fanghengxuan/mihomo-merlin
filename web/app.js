@@ -636,6 +636,7 @@ function renderSubs() {
         ${chip}
         <span class="chip">${esc(fmts[s.format] || s.format || '未知格式')}</span>
         <span class="chip">${s.nodeCount || 0} 节点</span>
+        ${filterTag(s)}
       </div>
       <div class="sub-url">${esc(s.url)}</div>
       ${s.error ? `<div class="sub-err">${esc(s.error)}</div>` : ''}
@@ -722,6 +723,8 @@ function openSubModal(sub) {
   $('#f-subName').value = sub ? sub.name : '';
   $('#f-subUrl').value = sub ? sub.url : '';
   $('#f-subInterval').value = sub ? (sub.interval || 0) : 0;
+  if ($('#f-subInclude')) $('#f-subInclude').value = sub ? (sub.includeFilter || '') : '';
+  if ($('#f-subExclude')) $('#f-subExclude').value = sub ? (sub.excludeFilter || '') : '';
   $('#subModal').classList.remove('hidden');
   setTimeout(() => $('#f-subUrl').focus(), 60);
 }
@@ -743,6 +746,8 @@ $('#subModalSave').addEventListener('click', async () => {
   const name = $('#f-subName').value.trim();
   const url = $('#f-subUrl').value.trim();
   const interval = parseInt($('#f-subInterval').value, 10) || 0;
+  const includeFilter = $('#f-subInclude').value.trim();
+  const excludeFilter = $('#f-subExclude').value.trim();
   if (!url) { toast('请填写订阅链接', 'err'); return; }
   if (!/^https?:\/\//i.test(url)) { toast('订阅链接必须以 http:// 或 https:// 开头', 'err'); return; }
 
@@ -760,10 +765,10 @@ $('#subModalSave').addEventListener('click', async () => {
   inlineLog.classList.remove('hidden');
   try {
     if (state.editingSub) {
-      await api('/api/subs/' + encodeURIComponent(state.editingSub.id), { method: 'PUT', body: { name, url, interval } });
+      await api('/api/subs/' + encodeURIComponent(state.editingSub.id), { method: 'PUT', body: { name, url, interval, includeFilter, excludeFilter } });
       toast('订阅已更新', 'ok');
     } else {
-      const r = await api('/api/subs', { method: 'POST', body: { name, url, interval } });
+      const r = await api('/api/subs', { method: 'POST', body: { name, url, interval, includeFilter, excludeFilter } });
       if (r.error) toast('已添加，但拉取失败：' + r.error, 'err');
       else toast('订阅已添加', 'ok');
     }
@@ -782,6 +787,57 @@ $('#subModalSave').addEventListener('click', async () => {
     // 失败时保留弹窗与日志，方便按提示改 URL / 直接看原文
   } finally {
     btn.disabled = false; btn.textContent = '保存';
+  }
+});
+
+/* ---------------- 备份 / 恢复 ---------------- */
+
+$('#btnBackupExport').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/backup', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('导出失败：HTTP ' + res.status);
+    const blob = await res.blob();
+    const ts = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const name = 'mihomo-merlin-backup-' + ts.getFullYear() + pad(ts.getMonth() + 1) + pad(ts.getDate()) +
+      '-' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.json';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    if ($('#backupHint')) $('#backupHint').textContent = '已导出 ' + name;
+    toast('备份已导出（含订阅地址，请妥善保管）', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#btnBackupImport').addEventListener('click', () => $('#backupFile').click());
+
+$('#backupFile').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!confirm('导入会覆盖当前设置与订阅（节点文件一起恢复），继续？')) return;
+  const btn = $('#btnBackupImport');
+  btn.disabled = true;
+  try {
+    const text = await file.text();
+    const r = await api('/api/restore', { method: 'POST', body: JSON.parse(text) });
+    toast((r && r.message) || '已恢复', 'ok');
+    if ($('#backupHint')) $('#backupHint').textContent = '已导入 ' + file.name;
+    await Promise.all([loadSettings(), loadStatus(), loadSubs()]);
+    if (state.view === 'nodes') await loadNodes();
+  } catch (err) {
+    toast('导入失败：' + (err.message || err), 'err');
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -1096,6 +1152,7 @@ const SETTING_FIELDS = ['mode', 'rulePreset', 'redirPort', 'mixedPort', 'logLeve
   'subUA', 'subUACustom', 'subInsecure', 'subProxyMode',
   'ruleSourceURL', 'ruleAutoUpdate', 'ruleIntervalH', 'ruleSourcePreset',
   'autoRestart', 'restartEveryHours', 'restartAt',
+  'dnsEnable', 'dnsMode', 'dnsListen', 'dnsNameserver', 'dnsFallback', 'dnsFakeIpRange',
   'autoIntervalSec', 'autoToleranceMs'];
 
 async function loadSettings() {

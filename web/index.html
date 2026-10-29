@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
 <title>Mihomo 魔方 · 路由面板</title>
-<link rel="stylesheet" href="app.css?v=1.6.1">
+<link rel="stylesheet" href="app.css?v=1.7.0">
 <link rel="icon" type="image/png" href="/icon-256.png">
 <link rel="apple-touch-icon" href="/icon-256.png">
 </head>
@@ -390,6 +390,37 @@
 
 
       <div class="card">
+        <div class="card-head"><h2>DNS</h2><span class="muted" id="dnsMeta">默认关闭（交给路由器 dnsmasq）</span></div>
+        <p class="muted">开启后由 mihomo 自己解析域名，可用 fake-ip 加速首包；路由器上用 redir-host 更稳。</p>
+        <div class="switch-grid">
+          <label class="switch"><input type="checkbox" id="s-dnsEnable"><i></i><span>启用 mihomo DNS</span></label>
+        </div>
+        <div class="form-grid">
+          <label class="field"><span>模式</span>
+            <select id="s-dnsMode" class="select">
+              <option value="redir-host">redir-host（推荐，路由器）</option>
+              <option value="fake-ip">fake-ip（更快，可能影响部分 App）</option>
+            </select>
+          </label>
+          <label class="field"><span>监听地址（留空=不监听）</span><input id="s-dnsListen" placeholder="0.0.0.0:1053"></label>
+          <label class="field"><span>上游 DNS（逗号分隔）</span><input id="s-dnsNameserver" placeholder="223.5.5.5,119.29.29.29"></label>
+          <label class="field"><span>回落 DNS（逗号分隔）</span><input id="s-dnsFallback" placeholder="1.1.1.1,8.8.8.8"></label>
+          <label class="field"><span>fake-ip 网段（仅 fake-ip 模式）</span><input id="s-dnsFakeIpRange" placeholder="198.18.0.1/16"></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>备份与恢复</h2><span class="muted">含订阅地址，请妥善保管</span></div>
+        <p class="muted">导出设置、订阅和已下载的节点文件；换机或重装后导入即可恢复，不必重新拉订阅。</p>
+        <div class="row-actions">
+          <button class="btn tonal" id="btnBackupExport"><svg><use href="#i-plus"/></svg><span>导出备份</span></button>
+          <button class="btn tonal" id="btnBackupImport"><svg><use href="#i-plus"/></svg><span>导入备份</span></button>
+          <input type="file" id="backupFile" accept="application/json,.json" class="hidden">
+          <span class="muted" id="backupHint">未导出</span>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-head"><h2>定时重启</h2></div>
         <p class="muted">内核长时间运行可能内存上涨，定时重启可保持稳定；面板本身不需要重启。</p>
         <div class="form-grid">
@@ -498,6 +529,9 @@
     <label class="field"><span>名称</span><input id="f-subName" placeholder="比如 机场A"></label>
     <label class="field"><span>订阅链接</span><input id="f-subUrl" placeholder="https://..." inputmode="url"></label>
     <label class="field"><span>自动更新间隔（小时，0 跟随全局）</span><input id="f-subInterval" type="number" min="0" max="168" value="0"></label>
+    <label class="field"><span>只保留匹配的节点（正则，留空=全部）</span><input id="f-subInclude" placeholder="例如 香港|HK|Hong Kong"></label>
+    <label class="field"><span>排除匹配的节点（正则）</span><input id="f-subExclude" placeholder="例如 过期|官|流量|试用"></label>
+    <p class="muted" style="margin:-4px 0 6px">过滤在 mihomo 加载节点时生效，节点数按过滤后统计。</p>
     <div class="prog-log hidden" id="subProgLog"></div>
     <div class="dialog-actions">
       <button class="btn text" id="subModalCancel">取消</button>
@@ -530,6 +564,6 @@
 </div>
 
 <div class="snackbar-wrap" id="toasts"></div>
-<script src="app.js?v=1.6.1"></script>
+<script src="app.js?v=1.7.0"></script>
 </body>
 </html>

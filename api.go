@@ -44,6 +44,12 @@ func publicSettings(s Settings) map[string]any {
 		"logLevel":          s.LogLevel,
 		"autoStart":         s.AutoStart,
 		"blockQuic":         s.BlockQuic,
+		"dnsEnable":         s.DNSEnable,
+		"dnsMode":           s.DNSMode,
+		"dnsListen":         s.DNSListen,
+		"dnsNameserver":     s.DNSNameserver,
+		"dnsFallback":       s.DNSFallback,
+		"dnsFakeIpRange":    s.DNSFakeIPRange,
 		"routerSelf":        s.RouterSelf,
 		"subInterval":       s.SubInterval,
 		"panelPassword":     s.PanelPassword,
@@ -199,7 +205,9 @@ func (a *App) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// 规则来源换了就要立刻重新下载，否则只是「设置里写了新来源、实际还用旧的 chnroute.txt」
 	ruleSourceChanged := prev.RuleSourcePreset != s.RuleSourcePreset || prev.RuleSourceURL != s.RuleSourceURL
 	if ruleSourceChanged {
+		a.bgTasks.Add(1)
 		go func() {
+			defer a.bgTasks.Done()
 			if _, rerr := a.UpdateRuleSet(""); rerr != nil {
 				a.addLog("warning", "规则来源已切换，但下载失败："+rerr.Error())
 				return
@@ -283,19 +291,21 @@ var subGlobalInterval int
 
 func subDTO(s Sub, reveal bool) map[string]any {
 	return map[string]any{
-		"id":         s.ID,
-		"name":       s.Name,
-		"url":        maskURL(s.URL, reveal),
-		"interval":   s.Interval,
-		"enabled":    s.Enabled,
-		"nodeCount":  s.NodeCount,
-		"format":     s.Format,
-		"updatedAt":  s.UpdatedAt,
-		"status":     s.Status,
-		"error":      s.Error,
-		"traffic":    s.Traffic,
-		"skipped":    s.Skipped,
-		"autoUpdate": autoUpdateInfo(s),
+		"id":            s.ID,
+		"name":          s.Name,
+		"url":           maskURL(s.URL, reveal),
+		"interval":      s.Interval,
+		"enabled":       s.Enabled,
+		"nodeCount":     s.NodeCount,
+		"format":        s.Format,
+		"updatedAt":     s.UpdatedAt,
+		"status":        s.Status,
+		"error":         s.Error,
+		"traffic":       s.Traffic,
+		"skipped":       s.Skipped,
+		"autoUpdate":    autoUpdateInfo(s),
+		"includeFilter": s.IncludeFilter,
+		"excludeFilter": s.ExcludeFilter,
 	}
 }
 
@@ -370,9 +380,11 @@ func (a *App) subNameExists(name, excludeID string) bool {
 
 func (a *App) handleCreateSub(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name     string `json:"name"`
-		URL      string `json:"url"`
-		Interval int    `json:"interval"`
+		Name          string `json:"name"`
+		URL           string `json:"url"`
+		Interval      int    `json:"interval"`
+		IncludeFilter string `json:"includeFilter"`
+		ExcludeFilter string `json:"excludeFilter"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, 400, "请求体不是合法 JSON")
@@ -404,12 +416,14 @@ func (a *App) handleCreateSub(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sub := Sub{
-		ID:       "s_" + randomToken(4),
-		Name:     body.Name,
-		URL:      body.URL,
-		Interval: body.Interval,
-		Enabled:  true,
-		Status:   "never",
+		ID:            "s_" + randomToken(4),
+		Name:          body.Name,
+		URL:           body.URL,
+		Interval:      body.Interval,
+		Enabled:       true,
+		Status:        "never",
+		IncludeFilter: strings.TrimSpace(body.IncludeFilter),
+		ExcludeFilter: strings.TrimSpace(body.ExcludeFilter),
 	}
 
 	a.subMu.Lock()
@@ -466,10 +480,12 @@ func (a *App) handleCreateSub(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleUpdateSub(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var body struct {
-		Name     *string `json:"name"`
-		URL      *string `json:"url"`
-		Interval *int    `json:"interval"`
-		Enabled  *bool   `json:"enabled"`
+		Name          *string `json:"name"`
+		URL           *string `json:"url"`
+		Interval      *int    `json:"interval"`
+		Enabled       *bool   `json:"enabled"`
+		IncludeFilter *string `json:"includeFilter"`
+		ExcludeFilter *string `json:"excludeFilter"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, 400, "请求体不是合法 JSON")
@@ -518,6 +534,12 @@ func (a *App) handleUpdateSub(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Enabled != nil {
 		sub.Enabled = *body.Enabled
+	}
+	if body.IncludeFilter != nil {
+		sub.IncludeFilter = strings.TrimSpace(*body.IncludeFilter)
+	}
+	if body.ExcludeFilter != nil {
+		sub.ExcludeFilter = strings.TrimSpace(*body.ExcludeFilter)
 	}
 	var err error
 	if refetch {
