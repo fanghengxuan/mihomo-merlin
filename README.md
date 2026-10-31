@@ -26,7 +26,7 @@
 3. 浏览器打开 `http://<路由器IP>:9380`
 4. 「订阅」→ 粘贴机场订阅链接 → 添加 → 「节点」→ 选择分组与节点 → 概览里点圆环启动
 
-> 首次装完若面板打不开：`ssh` 登录后执行 `/koolshare/scripts/mihomo_ctl.sh restart`，日志在 `/tmp/mihomo-panel.log`。
+> 首次装完若面板打不开：`ssh` 登录后执行 `/koolshare/scripts/mihomo_ctl.sh restart`，日志在 `/koolshare/mihomo/logs/panel.log`。
 
 > 想参与开发或反馈问题？见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
