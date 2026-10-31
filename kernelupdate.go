@@ -19,8 +19,15 @@ var (
 	kernelReleaseAPI = "https://api.github.com/repos/%s/releases?per_page=20"
 	kernelAtomURL    = "https://github.com/%s/releases.atom"
 	kernelAssetFmt   = "https://github.com/%s/releases/download/%s/mihomo-linux-armv7-slim-%s"
-	kernelAssetURL   = "https://api.github.com/repos/%s/releases/assets/%d"
-	maxKernelFetch   = int64(96 << 20)
+	// 国内直连 GitHub 经常超时，按顺序回退到镜像（都是「前缀 + 原始 URL」形式）
+	kernelMirrors = []string{
+		"https://ghfast.top/",
+		"https://gh-proxy.com/",
+		"https://ghproxy.net/",
+		"https://hub.gitmirror.com/",
+	}
+	kernelAssetURL = "https://api.github.com/repos/%s/releases/assets/%d"
+	maxKernelFetch = int64(96 << 20)
 )
 
 type kernelRelease struct {
@@ -104,26 +111,70 @@ func (a *App) latestSlimRelease() (*kernelRelease, string, int64, string, error)
 	return nil, "", 0, "", fmt.Errorf("没有找到带 %s 资产的 slim release", kernelAssetHint)
 }
 
+// fetchCandidates 返回依次尝试的 URL：GitHub 直连、各镜像、以及（可选）走本机代理。
+func fetchCandidates(rawURL string) []string {
+	out := []string{rawURL}
+	for _, m := range kernelMirrors {
+		out = append(out, m+rawURL)
+	}
+	return out
+}
+
+// getWithFallback 取一个 URL 的内容；直连失败就换镜像，最后再试「经本机代理」。
+// 返回值带上实际成功的地址，方便日志与排查。
+func (a *App) getWithFallback(rawURL string, maxBytes int64, timeout time.Duration) ([]byte, string, error) {
+	var lastErr error
+	try := func(u string, viaProxy bool) ([]byte, error) {
+		client := a.newHTTPClient(viaProxy, false)
+		client.Timeout = timeout
+		req, err := http.NewRequest("GET", u, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "mihomo-merlin-panel/"+panelVersion)
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+		return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	}
+
+	for _, u := range fetchCandidates(rawURL) {
+		b, err := try(u, false)
+		if err == nil && len(b) > 0 {
+			return b, u, nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+	}
+	// 最后一种手段：借道内核代理（前提是内核在跑，且订阅代理可用）
+	if a.engine.Running() {
+		if b, err := try(rawURL, true); err == nil && len(b) > 0 {
+			return b, rawURL + "（经本机代理）", nil
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("所有下载地址都失败")
+	}
+	return nil, "", lastErr
+}
+
 // latestSlimFromAtom 用 releases.atom 拿最新 slim tag，再 HEAD 资产拿大小。
 // GitHub 匿名 API 每小时只有 60 次，atom 与资产下载都不限量，更适合设备侧轮询。
 func (a *App) latestSlimFromAtom() (tag, version, assetURL string, size int64, published string, err error) {
-	client := a.newHTTPClient(false, false)
-	client.Timeout = 25 * time.Second
-
-	req, rerr := http.NewRequest("GET", fmt.Sprintf(kernelAtomURL, kernelRepo), nil)
-	if rerr != nil {
-		return "", "", "", 0, "", rerr
+	body, usedURL, ferr := a.getWithFallback(fmt.Sprintf(kernelAtomURL, kernelRepo), 1<<20, 25*time.Second)
+	if ferr != nil {
+		return "", "", "", 0, "", fmt.Errorf("获取版本信息失败：%v", ferr)
 	}
-	req.Header.Set("User-Agent", "mihomo-merlin-panel/"+panelVersion)
-	resp, rerr := client.Do(req)
-	if rerr != nil {
-		return "", "", "", 0, "", fmt.Errorf("访问 GitHub 失败：%v", rerr)
+	if usedURL != fmt.Sprintf(kernelAtomURL, kernelRepo) {
+		// 镜像成功也照常用，只在日志里留痕
+		a.addLog("info", "版本信息经镜像获取："+usedURL)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", "", "", 0, "", fmt.Errorf("releases.atom 返回 %d", resp.StatusCode)
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	// 从 <link href=".../releases/tag/<tag>"> 里取第一个 slim-* 的 tag
 	// （atom 的 <title> 是 release 标题，可能带中文，不能当 tag 用）
@@ -141,15 +192,7 @@ func (a *App) latestSlimFromAtom() (tag, version, assetURL string, size int64, p
 	version = strings.TrimPrefix(tag, kernelTagPrefix)
 	assetURL = fmt.Sprintf(kernelAssetFmt, kernelRepo, tag, version)
 
-	// HEAD 拿大小（失败不致命）
-	if hreq, herr := http.NewRequest("HEAD", assetURL, nil); herr == nil {
-		hreq.Header.Set("User-Agent", "mihomo-merlin-panel/"+panelVersion)
-		if hresp, herr := client.Do(hreq); herr == nil {
-			size = hresp.ContentLength
-			published = hresp.Header.Get("Last-Modified")
-			hresp.Body.Close()
-		}
-	}
+	// 大小：HEAD 拿不到就留 -1，不影响下载
 	return tag, version, assetURL, size, published, nil
 }
 
@@ -226,29 +269,16 @@ func (a *App) handleKernelUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := a.newHTTPClient(false, false)
-	client.Timeout = 3 * time.Minute
-	req, err := http.NewRequest("GET", downloadURL, nil)
-	if err != nil {
-		writeErr(w, 500, err.Error())
+	raw, usedURL, derr := a.getWithFallback(downloadURL, maxKernelFetch, 3*time.Minute)
+	if derr != nil || len(raw) == 0 {
+		if derr == nil {
+			derr = fmt.Errorf("下载内容为空")
+		}
+		writeErr(w, 502, "下载内核失败（已尝试 GitHub 直连与镜像，可稍后重试或手动上传）："+derr.Error())
 		return
 	}
-	req.Header.Set("Accept", "application/octet-stream")
-	req.Header.Set("User-Agent", "mihomo-merlin-panel/"+panelVersion)
-	resp, err := client.Do(req)
-	if err != nil {
-		writeErr(w, 502, "下载内核失败："+err.Error())
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		writeErr(w, 502, fmt.Sprintf("下载内核失败：HTTP %d", resp.StatusCode))
-		return
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxKernelFetch))
-	if err != nil {
-		writeErr(w, 502, "下载内核失败："+err.Error())
-		return
+	if usedURL != downloadURL {
+		a.addLog("info", "内核经备用地址下载："+usedURL)
 	}
 	payload, wasGz, err := maybeGunzip(raw)
 	if err != nil {
