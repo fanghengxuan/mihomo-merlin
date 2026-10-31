@@ -122,6 +122,34 @@ def main():
         if not bound:
             errors.append(f"控件 #{cid} 没有任何事件监听（点了没反应）")
 
+
+    # 调用了但没定义的本地函数（曾出现 filterTag 漏定义 → 订阅列表整块空白，异常被 catch 吞掉）
+    defined = set(re.findall(r"function\s+([A-Za-z_]\w*)\s*\(", js))
+    defined |= set(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=", js))
+    defined |= set(re.findall(r"([A-Za-z_]\w*)\s*[:=]\s*(?:async\s*)?(?:function|\()", js))
+    builtin = {
+        "if","for","while","switch","return","await","catch","function","typeof","setTimeout","clearTimeout",
+        "setInterval","clearInterval","requestAnimationFrame","parseInt","parseFloat","isNaN","String","Number",
+        "Boolean","Array","Object","JSON","Math","Date","RegExp","Error","Promise","Map","Set","fetch","decodeURIComponent",
+        "encodeURIComponent","encodeURI","decodeURI","btoa","atob","Blob","FileReader","FormData","URL","URLSearchParams",
+        "EventSource","Image","alert","confirm","prompt","matchMedia","getComputedStyle","queueMicrotask","structuredClone",
+        "requestIdleCallback","console","document","window","navigator","localStorage","history","location",
+        "XMLHttpRequest","WebSocket","File","Headers","Response","Request","AbortController","CustomEvent","Event",
+        "MouseEvent","KeyboardEvent","DOMParser","TextDecoder","TextEncoder","IntersectionObserver","ResizeObserver",
+        "MutationObserver","Notification","ProgressEvent","ClipboardItem","visualViewport",
+        # CSS 函数（出现在字符串里，不是 JS 调用）
+        "translateY","translateX","translate3d","scale","rotate","rgba","rgb","url","calc","var","linear-gradient",
+        "radial-gradient","cubic-bezier","blur","brightness","drop-shadow","clamp","min","max","attr",
+    }
+    code = re.sub(r"async\s*\(", "(", js)
+    code = re.sub(r"'[^'\n]*'|\"[^\"\n]*\"|`[^`]*`", "''", code)   # 去掉字符串，CSS 函数不再误报
+    called = set(re.findall(r"(?<![.\w$])([A-Za-z_][\w$]*)\s*\(", code))
+    missing = sorted(n for n in called - defined - builtin if not n.startswith("_"))
+    for n in missing:
+        # 只看像是本地小驼峰函数的调用（全小写单词多是 DOM API 或语法）
+        if re.search(r"[A-Z]", n) or len(n) > 4:
+            errors.append(f"app.js 调用了未定义的函数 {n}()（会抛 ReferenceError）")
+
     try:
         subprocess.run(["node", "--check", f"{ROOT}/app.js"], check=True, capture_output=True)
     except FileNotFoundError:

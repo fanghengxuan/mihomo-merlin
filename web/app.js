@@ -611,6 +611,15 @@ async function loadSubs() {
   } catch (e) { /* ignore */ }
 }
 
+// 订阅的节点过滤条件，显示成一个小标签（mihomo 的 filter / exclude-filter）
+function filterTag(s) {
+  const parts = [];
+  if (s.includeFilter) parts.push('保留 /' + s.includeFilter + '/');
+  if (s.excludeFilter) parts.push('排除 /' + s.excludeFilter + '/');
+  if (!parts.length) return '';
+  return '<span class="tag" title="mihomo 加载节点时按正则过滤">' + esc(parts.join(' · ')) + '</span>';
+}
+
 function renderSubs() {
   const box = $('#subList');
   if (!state.subs.length) {
@@ -1143,7 +1152,16 @@ function appendLog(d) {
         : (String(d.payload || '').startsWith('[面板]') ? 'l-panel' : '');
   const line = document.createElement('div');
   if (cls) line.className = cls;
-  line.textContent = String(d.payload == null ? '' : d.payload);
+  // 时间戳：内核/面板日志都带上，便于对时间点
+  const ts = d.time ? new Date(Number(d.time) * 1000) : new Date();
+  const hh = String(ts.getHours()).padStart(2, '0');
+  const mm = String(ts.getMinutes()).padStart(2, '0');
+  const ss = String(ts.getSeconds()).padStart(2, '0');
+  const stamp = document.createElement('span');
+  stamp.className = 'log-time';
+  stamp.textContent = hh + ':' + mm + ':' + ss + ' ';
+  line.appendChild(stamp);
+  line.appendChild(document.createTextNode(String(d.payload == null ? '' : d.payload)));
   const kw = (state.logFilter || '').trim().toLowerCase();
   if (kw && !line.textContent.toLowerCase().includes(kw)) line.classList.add('hidden');
   box.appendChild(line);
@@ -1517,6 +1535,24 @@ function kvRow(label, value) {
 
 
 ;
+
+async function loadStorage() {
+  try {
+    const r = await api('/api/storage');
+    const rep = (r && r.report) || {};
+    const total = rep.totalBytes || rep.total || 0;
+    const meta = $('#storageMeta');
+    if (meta) meta.textContent = total ? ('约 ' + fmtBytes(total)) : (rep.summary || '—');
+    const detail = $('#storageDetail');
+    if (detail && Array.isArray(rep.items) && rep.items.length) {
+      detail.textContent = rep.items
+        .map((it) => (it.name || it.path || '') + ' ' + fmtBytes(it.bytes || it.size || 0))
+        .join(' · ');
+    }
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('存储信息读取失败：', e);
+  }
+}
 
 $('#btnStorageClean').addEventListener('click', async () => {
   const btn = $('#btnStorageClean');
