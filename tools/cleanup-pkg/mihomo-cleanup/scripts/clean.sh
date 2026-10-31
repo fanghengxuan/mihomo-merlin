@@ -56,7 +56,7 @@ say "开始清理 mihomo 插件的历史残留"
 say "PATH=$PATH"
 for c in rm du df ls; do
 	p=$(command -v "$c" 2>/dev/null)
-	if [ -n "$p" ]; then say "命令 $c：$p"; else say "⚠️ 找不到命令 $c"; fi
+	if [ -n "$p" ]; then say "命令 ${c}：$p"; else say "⚠️ 找不到命令 $c"; fi
 done
 # 选一个能用的 rm（有的固件把 busybox applet 放在别处）
 RM=""

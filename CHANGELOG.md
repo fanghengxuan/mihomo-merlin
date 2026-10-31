@@ -9,6 +9,12 @@
 - **修复看门狗不恢复防火墙规则**：不再依赖内存里的 `applied`，每 45 秒用 `iptables -C` 实测；
   新增本机回环端点 `POST /api/iptables/apply`，Merlin 的 `nat-start` 可即时重放
 - 卸载改为从 `nvram get lan_ifname` 取 LAN 接口；安装包新增 `arch` 文件，安装器按包内架构校验
+- Merlin 安装器健壮性：
+  - 升级前把旧二进制与内核备份移到 `/tmp`，峰值只保留一份新文件
+  - `logs/` 与 `kernel/` 迁移到 `/tmp/mihomo` 并软链，避免占 jffs
+  - 卸载补删 `MIHOMO_OUT` 的 OUTPUT 跳转
+  - `panel_running` 增加 cmdline 校验，避免 pid 复用误判
+  - 修复 UTF-8 locale 下 `$VAR）` 被 bash 3.2 误解析为变量名的问题
 - 脚本层冒烟测试通过，尚未在 gnuton 真机验证
 - nokernel / lite 不再作为发布物
 

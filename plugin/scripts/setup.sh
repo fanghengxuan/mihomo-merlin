@@ -119,7 +119,7 @@ for lf in /koolshare/mihomo/logs/*.log; do
 	[ -f "$lf" ] || continue
 	sz=$(wc -c < "$lf" 2>/dev/null || echo 0)
 	if [ "${sz:-0}" -gt 262144 ]; then
-		tail -c 131072 "$lf" > "$lf.tmp" 2>/dev/null && mv -f "$lf.tmp" "$lf" 2>/dev/null && mm_log "已截断日志 $lf（原 ${sz} 字节）"
+		tail -c 131072 "$lf" > "$lf.tmp" 2>/dev/null && mv -f "$lf.tmp" "$lf" 2>/dev/null && mm_log "已截断日志 ${lf}（原 ${sz} 字节）"
 	fi
 done
 

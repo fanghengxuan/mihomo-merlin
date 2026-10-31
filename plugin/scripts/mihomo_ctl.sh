@@ -78,7 +78,7 @@ start() {
 	[ -x "$PANEL_BIN" ] || { echo "找不到 $PANEL_BIN"; return 1; }
 	pid=$(panel_pid)
 	if [ -n "$pid" ]; then
-		echo "面板已在运行（pid $pid）"
+		echo "面板已在运行（pid ${pid}）"
 		return 0
 	fi
 
@@ -99,7 +99,7 @@ start() {
 	done
 	if [ -n "$pid" ]; then
 		start_watchdog
-		echo "面板已启动（pid $pid），端口 $PORT（已启用 60 秒守护）"
+		echo "面板已启动（pid ${pid}），端口 ${PORT}（已启用 60 秒守护）"
 	else
 		echo "面板启动失败，请查看 $LOG_FILE"
 		return 1

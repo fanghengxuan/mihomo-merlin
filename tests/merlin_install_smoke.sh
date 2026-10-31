@@ -70,7 +70,9 @@ cat >"$STUB/mihomo-panel" <<'EOF'
 case "$1" in
 	-v) echo "mihomo-merlin panel 2.0.0-stub"; exit 0 ;;
 esac
-exec sleep 300
+trap 'exit 0' TERM INT
+# 保持 shell 进程，让 cmdline 里保留 mihomo-panel 路径（panel_running 会校验）
+while :; do sleep 1; done
 EOF
 
 chmod +x "$STUB"/*
@@ -88,6 +90,11 @@ run() {
 	MM_ROOT="$ROOT" PATH="$STUB:$PATH" sh "$@"
 }
 
+# 模拟老版本把 logs/kernel 留在 jffs 上
+mkdir -p "$BASE/data/kernel" "$BASE/data/logs"
+echo "OLD-KERNEL" >"$BASE/data/kernel/old.bin"
+echo "OLD-LOG" >"$BASE/data/logs/panel.log"
+
 # ---------- 安装 ----------
 echo "=== 安装 ==="
 if ! run "$PKG/install.sh" >"$ROOT/install.log" 2>&1; then
@@ -101,7 +108,11 @@ tail -6 "$ROOT/install.log"
 [ -x "$BASE/ctl.sh" ] || fail "控制脚本未安装"
 [ -x "$BASE/uninstall.sh" ] || fail "卸载脚本未安装"
 [ -f "$BASE/data/rules/chnroute.txt" ] || fail "规则未安装"
-ok "程序、数据目录与规则已落盘"
+[ -L "$BASE/data/logs" ] || fail "logs 未迁移到 /tmp"
+[ -L "$BASE/data/kernel" ] || fail "kernel 未迁移到 /tmp"
+[ -f /tmp/mihomo/kernel/old.bin ] || fail "旧内核备份未迁移到 /tmp"
+[ -f /tmp/mihomo/logs/panel.log ] || fail "旧日志未迁移到 /tmp"
+ok "程序、数据目录与规则已落盘；logs/kernel 已迁移并链接到 /tmp"
 
 grep -q "# >>> mihomo-merlin >>>" "$JFFS/scripts/services-start" || fail "services-start 缺少托管块"
 grep -q "$BASE/ctl.sh start" "$JFFS/scripts/services-start" || fail "services-start 未调用 ctl start"
@@ -112,7 +123,7 @@ ok "services-start / services-stop / nat-start 钩子已写入"
 [ -f "$BASE/data/panel.pid" ] || fail "面板未启动（缺少 pid 文件）"
 PID=$(cat "$BASE/data/panel.pid")
 kill -0 "$PID" 2>/dev/null || fail "面板进程未运行"
-ok "面板已启动（pid $PID）"
+ok "面板已启动（pid ${PID}）"
 
 # ---------- 重复安装幂等 ----------
 echo
@@ -137,7 +148,8 @@ if [ -n "$(cat "$BASE/data/panel.pid" 2>/dev/null)" ]; then
 	kill -0 "$(cat "$BASE/data/panel.pid")" 2>/dev/null && fail "面板仍在运行"
 fi
 grep -q "nat -F MIHOMO" "$ROOT/iptables.log" || fail "停止时未清理 iptables"
-ok "面板已停止并清理 iptables"
+grep -q "nat -D OUTPUT -j MIHOMO_OUT" "$ROOT/iptables.log" || fail "停止时未清理 MIHOMO_OUT 跳转"
+ok "面板已停止并清理 iptables（含 MIHOMO_OUT）"
 
 # ---------- 卸载 ----------
 echo

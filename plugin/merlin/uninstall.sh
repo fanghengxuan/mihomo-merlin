@@ -45,6 +45,11 @@ if command -v iptables >/dev/null 2>&1; then
 		iptables -t nat -D PREROUTING -i "$lanif" -j MIHOMO 2>/dev/null || break
 		i=$((i + 1))
 	done
+	i=0
+	while [ "$i" -lt 5 ]; do
+		iptables -t nat -D OUTPUT -j MIHOMO_OUT 2>/dev/null || break
+		i=$((i + 1))
+	done
 	iptables -t nat -F MIHOMO 2>/dev/null
 	iptables -t nat -X MIHOMO 2>/dev/null
 	iptables -t nat -F MIHOMO_OUT 2>/dev/null
@@ -64,5 +69,6 @@ else
 	mm_log "删除 $BASE"
 	rm -rf "$BASE"
 fi
+rm -rf /tmp/mihomo 2>/dev/null
 
 mm_log "卸载完成"

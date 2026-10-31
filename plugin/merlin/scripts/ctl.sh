@@ -1,6 +1,6 @@
 #!/bin/sh
 # mihomo-merlin 控制脚本（Asuswrt-Merlin / gnuton，无软件中心）
-# 用法：ctl.sh {start|stop|restart|status|reapply}
+# 用法：ctl.sh {start|stop|restart|status|prepare|reapply}
 #
 # 面板自己负责内核启停与 iptables；本脚本只做进程托管和兜底清理。
 # MM_ROOT 仅用于测试（假根目录），路由器上不要设置。
@@ -22,7 +22,33 @@ panel_running() {
 	[ -f "$PID" ] || return 1
 	p=$(cat "$PID" 2>/dev/null)
 	[ -n "$p" ] || return 1
-	kill -0 "$p" 2>/dev/null
+	kill -0 "$p" 2>/dev/null || return 1
+	# pid 可能被复用：在路由器上再用 cmdline 确认确实是我们的面板
+	if [ -r "/proc/$p/cmdline" ]; then
+		cmd=$(tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null)
+		case "$cmd" in
+			*"$PANEL"*) return 0 ;;
+			*) return 1 ;;
+		esac
+	fi
+	return 0
+}
+
+# 日志与内核备份放 /tmp，避免在 jffs 上占 10MB 级别的空间。
+# 旧目录会先复制到 /tmp 再删除；复制失败则保留原目录，不丢数据。
+ensure_runtime_dirs() {
+	mkdir -p /tmp/mihomo/logs /tmp/mihomo/kernel "$DATA/rules" "$DATA/providers"
+	for d in logs kernel; do
+		if [ -e "$DATA/$d" ] && [ ! -L "$DATA/$d" ]; then
+			if cp -R "$DATA/$d/." "/tmp/mihomo/$d/" 2>/dev/null; then
+				rm -rf "$DATA/$d"
+			else
+				mm_log "警告：$DATA/$d 迁移到 /tmp 失败，继续使用 jffs"
+				continue
+			fi
+		fi
+		ln -sfn "/tmp/mihomo/$d" "$DATA/$d"
+	done
 }
 
 find_pid_by_path() {
@@ -38,7 +64,7 @@ find_pid_by_path() {
 }
 
 start_panel() {
-	mkdir -p "$DATA/rules" "$DATA/logs" "$DATA/providers"
+	ensure_runtime_dirs
 	if panel_running; then
 		return 0
 	fi
@@ -146,6 +172,10 @@ case "${1:-}" in
 		sleep 1
 		"$0" start
 		;;
+	prepare)
+		# 安装/升级前调用：把 logs/kernel 迁到 /tmp，释放 jffs
+		ensure_runtime_dirs
+		;;
 	reapply)
 		# 供 nat-start 钩子调用：面板没在跑就什么都不做
 		panel_running || exit 0
@@ -167,7 +197,7 @@ case "${1:-}" in
 		[ -f "$DATA/enabled" ] && echo "enabled: yes" || echo "enabled: no"
 		;;
 	*)
-		echo "用法：$0 {start|stop|restart|status|reapply}"
+		echo "用法：$0 {start|stop|restart|status|prepare|reapply}"
 		exit 2
 		;;
 esac
