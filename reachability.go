@@ -22,7 +22,9 @@ type ReachTarget struct {
 // 内置目标（做成变量便于测试替换）
 var reachabilityTargets = []ReachTarget{
 	{ID: "google", Name: "Google", URL: "https://www.google.com/generate_204"},
-	{ID: "github", Name: "GitHub", URL: "https://api.github.com"},
+	// 不用 api.github.com：未认证 API 只有 60 次/小时/IP，机场共用出口很容易
+	// 被限流成 403，界面就会一直显示「受限」。robots.txt 稳定返回 200。
+	{ID: "github", Name: "GitHub", URL: "https://github.com/robots.txt"},
 	{ID: "youtube", Name: "YouTube", URL: "https://www.youtube.com/generate_204"},
 	{ID: "chatgpt", Name: "ChatGPT", URL: "https://chat.openai.com/cdn-cgi/trace"},
 	{ID: "claude", Name: "Claude", URL: "https://claude.ai"},

@@ -28,9 +28,13 @@ type Hub struct {
 	hist  []TrafficSample
 	tsubs map[chan TrafficSample]struct{}
 
-	lmu   sync.RWMutex
-	logs  []LogEntry
-	lsubs map[chan LogEntry]struct{}
+	lmu       sync.RWMutex
+	logs      []LogEntry
+	lsubs     map[chan LogEntry]struct{}
+	logMu     sync.Mutex
+	logCancel context.CancelFunc
+	logToken  int
+	logRank   int32
 
 	totUp   int64
 	totDown int64
@@ -55,12 +59,43 @@ const maxLogLines = 400
 const maxTrafficHist = 60
 
 func NewHub(app *App) *Hub {
-	return &Hub{
+	h := &Hub{
 		app:   app,
 		tsubs: map[chan TrafficSample]struct{}{},
 		lsubs: map[chan LogEntry]struct{}{},
 		psubs: map[chan ProgressEvent]struct{}{},
 	}
+	h.logRank = logLevelRank(app.settings.LogLevel)
+	return h
+}
+
+// logLevelRank 把日志级别换算成可比较的等级。未知级别按 info 处理。
+func logLevelRank(level string) int32 {
+	switch strings.ToLower(level) {
+	case "debug":
+		return 0
+	case "warning", "warn":
+		return 2
+	case "error":
+		return 3
+	case "silent":
+		return 4
+	default:
+		return 1
+	}
+}
+
+// LogRank 返回当前最低日志级别；SSE 补发历史时也按它过滤。
+func (h *Hub) LogRank() int32 { return atomic.LoadInt32(&h.logRank) }
+
+// SetLogLevel 立即更新过滤级别，并断开当前内核日志流，让它按新级别重连。
+func (h *Hub) SetLogLevel(level string) {
+	atomic.StoreInt32(&h.logRank, logLevelRank(level))
+	h.logMu.Lock()
+	if h.logCancel != nil {
+		h.logCancel()
+	}
+	h.logMu.Unlock()
 }
 
 func (h *Hub) Start() {
@@ -160,6 +195,11 @@ func (h *Hub) addLog(level, msg string) {
 }
 
 func (h *Hub) pushLog(e LogEntry) {
+	// 内核日志流切换有延迟，面板自己的日志也会一直产生；
+	// 在入口按当前级别过滤，用户改完级别立即生效。
+	if logLevelRank(e.Type) < atomic.LoadInt32(&h.logRank) {
+		return
+	}
 	h.lmu.Lock()
 	h.logs = append(h.logs, e)
 	if len(h.logs) > maxLogLines {
@@ -203,10 +243,20 @@ func (h *Hub) logLoop() {
 		level := h.app.settings.LogLevel
 		h.app.mu.RUnlock()
 
-		// 每 5 分钟重连一次，使日志级别改动能生效
+		// 每 5 分钟重连一次；设置日志级别时会通过 SetLogLevel 立即取消当前流
+		h.logMu.Lock()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		h.logToken++
+		tok := h.logToken
+		h.logCancel = cancel
+		h.logMu.Unlock()
 		_ = h.app.clash.StreamLogs(ctx, level, func(e LogEntry) { h.pushLog(e) })
 		cancel()
+		h.logMu.Lock()
+		if h.logToken == tok {
+			h.logCancel = nil
+		}
+		h.logMu.Unlock()
 		time.Sleep(time.Second)
 	}
 }

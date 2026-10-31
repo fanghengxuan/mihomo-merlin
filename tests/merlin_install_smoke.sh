@@ -68,7 +68,7 @@ EOF
 cat >"$STUB/mihomo-panel" <<'EOF'
 #!/bin/sh
 case "$1" in
-	-v) echo "mihomo-merlin panel 2.0.2-stub"; exit 0 ;;
+	-v) echo "mihomo-merlin panel 2.0.3-stub"; exit 0 ;;
 esac
 trap 'exit 0' TERM INT
 # 保持 shell 进程，让 cmdline 里保留 mihomo-panel 路径（panel_running 会校验）

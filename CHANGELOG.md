@@ -1,5 +1,15 @@
 # 更新记录
 
+## 2.0.3（2026-11-01）
+
+- 概览「服务连通性」的 GitHub 探测改用 `https://github.com/robots.txt`；
+  原来的 `api.github.com` 有 60 次/小时/IP 的未认证限流，机场共用出口容易一直显示「受限」
+- `/api/kernel` 缓存内核版本与 SHA-256（按文件大小/mtime 失效），
+  不再每次请求都执行 `mihomo -v` 和全量哈希
+- 日志级别切换立即生效：入口按级别过滤，并打断当前内核日志流按新级别重连；
+  前端同步隐藏低于当前级别的历史行
+- README 改为以 Asuswrt-Merlin / gnuton 为主，koolshare 作为可选安装方式
+
 ## 2.0.2（2026-11-01）
 
 - 修复 gnuton/Merlin 默认 `vm.overcommit_memory=2` 导致 slim 内核启动时报

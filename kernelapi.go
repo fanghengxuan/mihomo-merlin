@@ -129,15 +129,33 @@ func (a *App) saveBackupMeta(kb *kernelBackup) {
 
 func (a *App) currentKernelInfo() kernelInfo {
 	fi, _ := os.Stat(a.mihomoPath)
-	info := kernelInfo{Path: a.mihomoPath}
+	key := ""
 	if fi != nil {
-		info.Size = fi.Size()
-		info.ModTime = fi.ModTime().Unix()
+		key = fmt.Sprintf("%s|%d|%d", a.mihomoPath, fi.Size(), fi.ModTime().Unix())
 	}
-	if v, err := a.readKernelVersion(a.mihomoPath); err == nil {
-		info.Version = v
+
+	a.kinfoMu.Lock()
+	info := a.kinfoInfo
+	cached := key != "" && a.kinfoKey == key
+	a.kinfoMu.Unlock()
+
+	if !cached {
+		info = kernelInfo{Path: a.mihomoPath}
+		if fi != nil {
+			info.Size = fi.Size()
+			info.ModTime = fi.ModTime().Unix()
+		}
+		if v, err := a.readKernelVersion(a.mihomoPath); err == nil {
+			info.Version = v
+		}
+		info.SHA256 = sha256File(a.mihomoPath)
+		if key != "" {
+			a.kinfoMu.Lock()
+			a.kinfoKey = key
+			a.kinfoInfo = info
+			a.kinfoMu.Unlock()
+		}
 	}
-	info.SHA256 = sha256File(a.mihomoPath)
 	if kb := a.loadBackupMeta(); kb != nil {
 		info.BackupVer = kb.Version
 		info.BackupTime = kb.Time

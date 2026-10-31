@@ -4,11 +4,14 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![release](https://img.shields.io/github/v/release/fanghengxuan/mihomo-merlin)](https://github.com/fanghengxuan/mihomo-merlin/releases)
 
-**给华硕梅林（koolshare 软件中心）路由器用的 mihomo 代理插件**：内核用 [mihomo](https://github.com/MetaCubeX/mihomo)，
-自带一个 FlClash 风格的 Web 面板，打包成软件中心可直接离线安装的 `tar.gz`。
+**给华硕梅林路由器用的 mihomo 代理插件**：内核用 [mihomo](https://github.com/MetaCubeX/mihomo)，
+自带一个 FlClash 风格的 Web 面板。支持两种固件形态：
 
-> 在 **TUF-AX3000 / axhnd.675x（armv7，内核 4.1）** 上实测通过：koolshare 版 v2.0.0，gnuton/Merlin 版 v2.0.2。
-> 同代 axhnd 机型（RT-AX58U / RT-AX3000 / RT-AX56U 等）通常同样适用。
+- **Asuswrt-Merlin / gnuton（推荐）**：原生安装包，装到 `/jffs`，不需要软件中心
+- **koolshare / SWRT**：提供软件中心离线安装包
+
+> 在 **TUF-AX3000 / axhnd.675x（armv7，内核 4.1）** 上实测通过：gnuton/Merlin 版 v2.0.2（安装、引擎启停、overcommit 修复），
+> koolshare 版 v2.0.0。同代 axhnd 机型（RT-AX58U / RT-AX3000 / RT-AX56U 等）通常同样适用。
 
 **能力**：订阅管理（链接 / 粘贴导入 / 正则过滤）· 节点分组与测速 · 规则 / 全局 / 直连三种模式 ·
 透明代理（iptables REDIRECT）· 实时流量与连接 · 日志流 · 服务连通性与 IP 质量 ·
@@ -25,15 +28,24 @@
 
 ## 快速开始
 
-1. 到 [Releases](https://github.com/fanghengxuan/mihomo-merlin/releases) 下载 `mihomo-merlin_<版本>_armv7_koolshare.tar.gz`
-2. 路由器 → 软件中心 → 离线安装 → 选择该文件（安装完成后页面自动刷新）
-3. 浏览器打开 `http://<路由器IP>:9380`
-4. 「订阅」→「添加订阅」→ 粘贴机场链接 →「节点」选择分组与节点 →「概览」点电源按钮启动
+**Asuswrt-Merlin / gnuton：**
 
-> 面板打不开时：`ssh` 登录后执行 `/koolshare/scripts/mihomo_ctl.sh restart`，
-> 日志在 `/koolshare/mihomo/logs/panel.log`。
+1. 到 [Releases](https://github.com/fanghengxuan/mihomo-merlin/releases) 下载 `mihomo-merlin_<版本>_armv7_merlin.tar.gz`
+2. 开启 **Administration → System → Enable JFFS custom scripts and configs**
+3. `ssh` 上传并安装：
 
-> 没有软件中心（gnuton / 原生 Merlin）请直接看 §3.3。
+   ```sh
+   cd /tmp && tar -xzf mihomo-merlin_<版本>_armv7_merlin.tar.gz
+   sh /tmp/mihomo-merlin/install.sh
+   ```
+
+4. 浏览器打开 `http://<路由器IP>:9380`
+5. 「订阅」→「添加订阅」→ 粘贴机场链接 →「节点」选择分组与节点 →「概览」点电源按钮启动
+
+> 面板重启：`/jffs/mihomo-merlin/ctl.sh restart`；日志在 `/tmp/mihomo/logs/panel.log`。
+
+**koolshare / SWRT 软件中心**：下载 `mihomo-merlin_<版本>_armv7_koolshare.tar.gz`，在软件中心离线安装即可，
+详见 §3.2。
 
 > 参与开发或反馈问题见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
@@ -95,9 +107,9 @@
 ```
 ┌──────────────────────────── 路由器 ────────────────────────────┐
 │                                                                │
-│  /koolshare/bin/mihomo            mihomo 内核（armv7 静态）      │
-│  /koolshare/bin/mihomo-panel      Go 面板：订阅/配置/进程/规则   │
-│  /koolshare/mihomo/               数据目录                       │
+│  <安装目录>/bin/mihomo            mihomo 内核（armv7 静态）      │
+│  <安装目录>/bin/mihomo-panel      Go 面板：订阅/配置/进程/规则   │
+│  <数据目录>/                       设置 / 订阅 / 节点 / 规则      │
 │    ├── settings.json              设置                           │
 │    ├── subs.json                  订阅列表 + 流量信息            │
 │    ├── providers/<id>.json        转换后的节点（proxy-provider） │
@@ -115,40 +127,21 @@
   详见 [docs/kernel.md](docs/kernel.md)。
 - **mihomo-panel**：自包含 Go 程序，负责订阅抓取/解析、配置生成、内核启停、iptables 维护、
   REST API，并把 `web/**` 嵌入二进制。正常构建约 8.6 MB；`PANEL_UPX=1` 可压到约 2.4 MB。
-- **软件中心集成**：`install.sh` 写入 `/koolshare`、登记菜单，并在 `init.d` 建 `S99/N99` 软链实现开机自启。
+- **安装位置**：Merlin 为 `/jffs/mihomo-merlin`（数据在 `data/`）；koolshare 为 `/koolshare`
+  （程序在 `bin/`，数据在 `mihomo/`）。
+- **自启动**：Merlin 用 `/jffs/scripts/services-start`、`services-stop`、`nat-start`；
+  koolshare 用 `init.d/S99·N99` 与软件中心菜单。
 
 ## 3. 安装
 
-### 3.1 软件中心离线安装（推荐）
+| 固件 | 安装包 | 方式 |
+| --- | --- | --- |
+| Asuswrt-Merlin / gnuton | `mihomo-merlin_<版本>_armv7_merlin.tar.gz` | 原生安装到 `/jffs`（推荐） |
+| koolshare / SWRT | `mihomo-merlin_<版本>_armv7_koolshare.tar.gz` | 软件中心离线安装 |
 
-1. 下载 `mihomo-merlin_<版本>_armv7_koolshare.tar.gz`。
-2. 路由器后台 →「软件中心」→「离线安装」→ 选择该文件。
-3. 安装完成后打开 `http://<路由器IP>:9380`。
+### 3.1 Asuswrt-Merlin / gnuton（推荐）
 
-### 3.2 手动安装
-
-```sh
-# 把 tar.gz 传到路由器 /tmp 后：
-cd /tmp && tar -xzf mihomo-merlin_<版本>_armv7_koolshare.tar.gz
-sh /tmp/mihomo/install.sh
-```
-
-`install.sh` 会做机型/架构/空间检查，安装后登记菜单（有 `dbus` 时）并启动面板。
-
-### 3.3 Asuswrt-Merlin（gnuton 等，无软件中心）
-
-软件中心包依赖 `/koolshare`；gnuton/asuswrt-merlin.ng 是 RMerlin 官方分支，没有软件中心。
-因此提供一个独立的 Merlin 安装包：
-
-1. 本地构建（Go 1.23+；内核与规则复用 `.cache`，先跑过一次 `./build.sh`）：
-
-   ```sh
-   GO=$HOME/go/bin/go ./tools/build-merlin-package.sh
-   # NOKERNEL=1 或 PANEL_UPX=1 用法同上
-   ```
-
-   产物：`dist/mihomo-merlin_<版本>_armv7_merlin.tar.gz`
-
+1. 下载 `mihomo-merlin_<版本>_armv7_merlin.tar.gz`。
 2. 路由器后台开启 **Administration → System → Enable JFFS custom scripts and configs**
    （等价于 `nvram set jffs2_scripts=1 && nvram commit`）。
 3. 上传并安装：
@@ -166,17 +159,32 @@ sh /tmp/mihomo/install.sh
 
 说明：
 
+- 已在 **TUF-AX3000 + gnuton 388.11** 实测：安装、面板与引擎启停、overcommit 修复；
+  订阅拉取与实际代理链路需配置后验证。
 - 仅支持 **armv7l**；TUF-AX3000 v1/v2 在 gnuton 3004 分支的支持列表内。
-- 没有软件中心菜单/卸载入口；升级时重新执行 `install.sh`，`data/` 下的订阅与设置会保留。
-- `nat-start` 钩子会在防火墙重启 / WAN 重拨后即时重放转发规则；看门狗每 45 秒实测规则是否还在，作为兜底。
+- `nat-start` 会在防火墙重启 / WAN 重拨后即时重放转发规则；看门狗每 45 秒实测规则是否还在。
 - 面板启动时会按 `enabled` 标记自动拉起内核（前提是「开机自启」开启，且首次使用点过一次启动）。
 - 日志与内核备份放在 `/tmp/mihomo`（重启清空），不占 jffs；重启后上一版内核备份不再可回滚。
 - 升级时先把旧二进制和内核备份移到 `/tmp`，峰值只保留一份新文件，适配 26 MB 级 jffs。
 - gnuton 默认 `vm.overcommit_memory=2`，slim 内核会启动失败；面板在启动内核前会自动调整为 0。
-- 脚本层已用假根目录做安装/启动/停止/卸载冒烟测试，**尚未在 gnuton 真机验证**；
-  上真机前建议先在测试环境确认。
+- 从源码构建安装包：`./tools/build-merlin-package.sh`（见 §10）。
 
-### 3.4 首次使用
+### 3.2 koolshare / SWRT 软件中心
+
+1. 下载 `mihomo-merlin_<版本>_armv7_koolshare.tar.gz`。
+2. 路由器后台 →「软件中心」→「离线安装」→ 选择该文件。
+3. 安装完成后打开 `http://<路由器IP>:9380`。
+
+没有软件中心入口时，也可以手动安装：
+
+```sh
+cd /tmp && tar -xzf mihomo-merlin_<版本>_armv7_koolshare.tar.gz
+sh /tmp/mihomo/install.sh
+```
+
+`install.sh` 会做机型/架构/空间检查，安装后登记菜单（有 `dbus` 时）并启动面板。
+
+### 3.3 首次使用
 
 1. 打开面板，进入「订阅」→「添加订阅」，粘贴机场链接（Clash YAML / base64 节点列表都支持）。
 2. 回到「概览」点电源按钮启动；LAN 设备自动走规则模式（国内直连、其余走代理）。
@@ -211,8 +219,9 @@ WAN、NTP、DDNS 一起卷进去；`nat REDIRECT` 只作用于 `br0` 转发流�
 
 ## 5. jffs 空间不足怎么办
 
-软件中心在**解压前**检查 jffs：`剩余 - 2048KB 预留 < 解压后大小` 时会直接退出，
-此时插件的 `install.sh` 还没运行，所以要用独立清理脚本：
+Merlin 安装器会在写入前检查 `/jffs`；空间不足时先卸载旧版或清理其它插件。
+如果使用 koolshare 软件中心，它在**解压前**就会检查（`剩余 - 2048KB 预留 < 解压后大小`），
+此时插件的 `install.sh` 还没运行，可以用独立清理脚本：
 
 ```sh
 # 路由器上（ssh），先预览可清理项（不会删除任何东西）
@@ -222,7 +231,7 @@ sh mihomo-cleanup.sh
 sh mihomo-cleanup.sh --yes --need 18300
 ```
 
-脚本只处理本插件路径（数据目录、两个二进制、菜单页、图标、脚本、自启软链、`/tmp` 旧日志），
+脚本只处理 koolshare 安装路径（数据目录、两个二进制、菜单页、图标、脚本、自启软链、`/tmp` 旧日志），
 会列出内核备份明细并报告释放空间。
 
 | 包 | tar.gz | 解压占用 | 需要 jffs |
@@ -274,8 +283,9 @@ mihomo-merlin/
 │   └── js/
 │       ├── 00-core.js … 90-main.js
 │       └── views/            7 个视图 + 设置 + 更多 sheet
-├── plugin/                   软件中心插件骨架（install.sh / ASP / ctl / 图标）
-│   └── merlin/               Asuswrt-Merlin 原生安装（无软件中心）
+├── plugin/
+│   ├── merlin/               Asuswrt-Merlin 原生安装（推荐）
+│   └── scripts/ · webs/      koolshare 软件中心插件骨架
 ├── tools/
 │   └── build-merlin-package.sh
 ├── tests/
@@ -301,8 +311,8 @@ mihomo-merlin/
 - 订阅协议覆盖 `ss / ssr / vmess / vless(reality) / trojan / hysteria / hysteria2 / tuic / socks5`。
 - **前端体积**：`web/` 原始约 332 KB（JS gzip 后约 58 KB），超过设计规范的自定目标；
   已按 [docs/ui-redesign/spec.md](docs/ui-redesign/spec.md) §10.3-7 记录为接受例外，以换取无构建、源码可直接维护。
-- **Merlin 原生安装未上真机**：gnuton 安装器只做了脚本层冒烟测试，尚未在 TUF-AX3000 的 gnuton 固件上验证；
-  软件中心版本已在同机型实测通过。
+- **真机验证范围**：Merlin 版 v2.0.2 已在 TUF-AX3000 + gnuton 388.11 验证安装、面板/引擎启停、
+  overcommit 修复与 iptables 清理；订阅拉取与实际代理链路需配置后验证。koolshare 版 v2.0.0 已在同机型实测通过。
 
 ## 10. 构建
 
@@ -317,8 +327,8 @@ GO=$HOME/go/bin/go ./build.sh                 # 完整包（含 slim 内核与 c
 
 产物在 `dist/`：
 
-- 软件中心：`mihomo-merlin_<版本>_armv7_koolshare.tar.gz` + `.sha256`
 - Merlin：`mihomo-merlin_<版本>_armv7_merlin.tar.gz`，由 `tools/build-merlin-package.sh` 生成
+- koolshare：`mihomo-merlin_<版本>_armv7_koolshare.tar.gz` + `.sha256`
 
 ## 11. 开发与测试
 
@@ -351,13 +361,13 @@ MM_DATA_DIR=/tmp/mmdata MM_MIHOMO=$(command -v mihomo) MM_NO_IPTABLES=1 \
 | 现象 | 排查 |
 | --- | --- |
 | 软件中心提示「不是 ASUS hnd 平台的离线包」 | 包根目录需有 `.valid`（内容 `hnd`），ASP 里需有 `PKG_ARCH="hnd"` |
-| 安装时提示空间不足 | 见 §5，用清理脚本释放 jffs |
-| 面板打不开 | `pidof mihomo-panel`；`tail -50 /koolshare/mihomo/logs/panel.log` |
-| 提示「配置校验失败」 | 按提示修改订阅或节点；内核原文在 `/koolshare/mihomo/logs/mihomo.log` |
+| 安装时提示空间不足 | 见 §5 |
+| 面板打不开 | `pidof mihomo-panel`；Merlin 日志在 `/tmp/mihomo/logs/panel.log`，koolshare 在 `/koolshare/mihomo/logs/panel.log` |
+| 提示「配置校验失败」 | 按提示修改订阅或节点；内核原文在对应数据目录的 `logs/mihomo.log` |
 | 节点列表为空但订阅正常 | 看订阅卡错误信息，或「原始内容」确认服务器返回了什么 |
 | 启动成功但没法上网 | `iptables -t nat -L MIHOMO -n -v` 看规则；`iptables -t nat -L PREROUTING -n` 看跳转 |
-| 重启防火墙后失效 | 看门狗 45 秒内补回；也可 `sh /koolshare/scripts/mihomo_ctl.sh restart` |
-| 想看内核输出 | `tail -f /koolshare/mihomo/logs/mihomo.log`，或面板「日志」页 |
+| 重启防火墙后失效 | `nat-start` 会即时重放；看门狗 45 秒兜底。Merlin：`/jffs/mihomo-merlin/ctl.sh reapply` |
+| 想看内核输出 | 面板「日志」页，或 `tail -f` 数据目录下的 `logs/mihomo.log` |
 
 ## 13. 许可与出处
 
@@ -369,4 +379,4 @@ MM_DATA_DIR=/tmp/mmdata MM_MIHOMO=$(command -v mihomo) MM_NO_IPTABLES=1 \
 
 ## 更新记录
 
-见 [CHANGELOG.md](CHANGELOG.md)。当前版本 **2.0.2**：面板重构 + 稳定性与 Merlin 安装修复。
+见 [CHANGELOG.md](CHANGELOG.md)。当前版本 **2.0.3**：面板重构 + 稳定性与 Merlin 安装修复。

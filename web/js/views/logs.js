@@ -32,8 +32,18 @@
     if (node.textContent !== s) node.textContent = s;
   }
 
+  var LEVEL_RANK = { debug: 0, info: 1, warning: 2, warn: 2, error: 3, silent: 4 };
+
   function currentLevel() {
     return (state().settings && state().settings.logLevel) || 'info';
+  }
+  function levelRank(level) {
+    var r = LEVEL_RANK[String(level || '').toLowerCase()];
+    return r === undefined ? 1 : r;
+  }
+  function entryVisible(entry) {
+    if (levelRank(entry.type) < levelRank(currentLevel())) return false;
+    return !searchTerm || entry.text.indexOf(searchTerm) >= 0;
   }
 
   function typeClass(type) {
@@ -152,9 +162,10 @@
     el.querySelector('.log-msg').textContent = msg;
 
     var text = (label + ' ' + msg).toLowerCase();
-    if (searchTerm && text.indexOf(searchTerm) < 0) el.classList.add('hidden');
+    var entry = { el: el, text: text, type: type };
+    if (!entryVisible(entry)) el.classList.add('hidden');
     refs.view.appendChild(el);
-    entries.push({ el: el, text: text, type: type });
+    entries.push(entry);
 
     while (entries.length > maxLines()) {
       var old = entries.shift();
@@ -171,7 +182,7 @@
 
   function applyFilter() {
     entries.forEach(function (e) {
-      e.el.classList.toggle('hidden', !!searchTerm && e.text.indexOf(searchTerm) < 0);
+      e.el.classList.toggle('hidden', !entryVisible(e));
     });
     updateEmpty();
     updateNewest();
@@ -272,6 +283,7 @@
     var prev = currentLevel();
     var merged = Object.assign({}, state().settings || {}, { logLevel: level });
     MM.store.set({ settings: merged });
+    applyFilter();
     MM.router.refreshActions();
     MM.api('/api/settings', { method: 'PUT', body: { logLevel: level } }).then(function (d) {
       if (d && d.settings) {
@@ -281,6 +293,7 @@
     }).catch(function (e) {
       var cur = Object.assign({}, state().settings || {}, { logLevel: prev });
       MM.store.set({ settings: cur });
+      applyFilter();
       MM.router.refreshActions();
       MM.ui.toast(e.message || '切换日志级别失败', 'err');
     });
@@ -293,8 +306,9 @@
     active = true;
     setStatus(MM.sched.streamStatus('logs'));
     openStream();
+    applyFilter();
     if (!state().settings) {
-      MM.data.loadSettings().then(function () { MM.router.refreshActions(); }, function () { /* ignore */ });
+      MM.data.loadSettings().then(function () { applyFilter(); MM.router.refreshActions(); }, function () { /* ignore */ });
     }
     updatePausedUI();
     updateNewest();

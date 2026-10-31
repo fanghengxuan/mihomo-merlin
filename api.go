@@ -268,6 +268,9 @@ func (a *App) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidateCoreCache()
+	if prev.LogLevel != s.LogLevel && a.hub != nil {
+		a.hub.SetLogLevel(s.LogLevel)
+	}
 	a.addLog("info", "设置已更新")
 
 	// 同步应用：设置里的 mode / 端口 / 规则集都会影响运行中的内核，
@@ -1248,6 +1251,9 @@ func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {
 	defer unsub()
 
 	for _, e := range backlog {
+		if logLevelRank(e.Type) < a.hub.LogRank() {
+			continue
+		}
 		writeSSE(w, map[string]any{"type": e.Type, "payload": e.Payload, "time": e.Timestamp})
 	}
 	fl.Flush()
@@ -1262,6 +1268,9 @@ func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {
 		case e, ok := <-ch:
 			if !ok {
 				return
+			}
+			if logLevelRank(e.Type) < a.hub.LogRank() {
+				continue
 			}
 			writeSSE(w, map[string]any{"type": e.Type, "payload": e.Payload, "time": e.Timestamp})
 			fl.Flush()

@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const panelVersion = "2.0.2"
+const panelVersion = "2.0.3"
 
 // panelPort 管理面板监听端口（插件安装脚本与 ASP 都按此端口访问）
 const panelPort = 9380
@@ -47,6 +47,9 @@ type App struct {
 
 	subMu     sync.Mutex // 串行化订阅的网络刷新
 	kernelMu  sync.Mutex // 串行化内核替换/回滚
+	kinfoMu   sync.Mutex // 缓存内核版本/SHA，避免每次请求都跑 mihomo -v
+	kinfoKey  string
+	kinfoInfo kernelInfo
 	samples   *sampler
 	logRing   *ringBuffer
 	iptablesE string
