@@ -193,7 +193,7 @@ fi
 
 build_panel
 
-# 前端一致性检查：标签平衡 / id 引用 / 弹窗位置 / app.js 语法
+# 前端一致性检查：HTML 结构 / id 引用 / web/js 语法 / 脚本顺序与版本戳 / 禁用模式
 if command -v python3 >/dev/null 2>&1; then
 	echo ">>> 前端一致性检查"
 	python3 "$ROOT/tests/ui_check.py" || { echo "!!! 前端检查未通过，停止打包"; exit 1; }

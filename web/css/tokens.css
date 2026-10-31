@@ -1,0 +1,102 @@
+/* mihomo-merlin v2 design tokens — see docs/ui-redesign/spec.md ch.2 */
+:root{
+  --font-ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  --r-xs:4px;--r-sm:8px;--r-md:16px;--r-lg:20px;--r-xl:24px;
+  --r-xxl:28px;--r-dash:32px;--r-alert:34px;--r-pill:999px;
+
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;
+  --sp-6:24px;--sp-8:32px;--sp-10:40px;--sp-12:48px;
+
+  --dur-fast:200ms;--dur-mid:250ms;--dur-slow:300ms;
+  --ease-standard:cubic-bezier(.2,0,0,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-in:cubic-bezier(.4,0,1,1);
+  --motion-off:0ms;
+
+  --divider:rgba(var(--on-surface-rgb),.14);
+  --hover:rgba(var(--on-surface-rgb),.06);
+  --pressed:rgba(var(--on-surface-rgb),.1);
+  --neutral-selected:rgba(var(--on-surface-rgb),.08);
+  --accent-weak:rgba(var(--accent-rgb),.1);
+  --accent-line:rgba(var(--accent-rgb),.35);
+}
+
+:root[data-theme="light"]{
+  --surface-page:#EDEEF1;--surface-card:#FBFBFC;
+  --surface-block:#EDEEF1;--surface-inset:#E3E5E9;
+  --surface-chrome:#E3E5E9;--surface-sheet:var(--surface-page);
+  --surface-float:var(--surface-card);
+
+  --on-surface:#17181B;--on-surface-rgb:23,24,27;
+  --on-surface-variant:#5D636D;
+  --outline:#787F89;--outline-variant:#C6CAD1;
+
+  --ok:#1B7F4B;--ok-rgb:27,127,75;--ok-bg:#DFF3E7;
+  --warn:#A85B00;--warn-rgb:168,91,0;--warn-bg:#F7E9D2;
+  --err:#BA1A1A;--err-rgb:186,26,26;--err-bg:#F9DEDC;
+  --destructive:#FF383C;
+
+  --scrim:rgba(0,0,0,.2);--scrim-alert:rgba(0,0,0,.2);
+  --shadow-e1:0 .5px 1px rgba(0,0,0,.05),0 2px 6px rgba(0,0,0,.04),0 12px 32px -6px rgba(0,0,0,.09);
+  --shadow-e2:0 1px 3px rgba(0,0,0,.06),0 10px 24px rgba(0,0,0,.08),0 32px 64px -12px rgba(0,0,0,.22);
+}
+
+:root[data-theme="dark"]{
+  --surface-page:#0F1013;--surface-card:#1A1B1F;
+  --surface-block:#24262B;--surface-inset:#2E3136;
+  --surface-chrome:#15161A;--surface-sheet:var(--surface-card);
+  --surface-float:var(--surface-block);
+
+  --on-surface:#F2F3F5;--on-surface-rgb:242,243,245;
+  --on-surface-variant:#B9BDC6;
+  --outline:#868C96;--outline-variant:#3A3E45;
+
+  --ok:#6FDC9A;--ok-rgb:111,220,154;--ok-bg:#123A27;
+  --warn:#FFC46B;--warn-rgb:255,196,107;--warn-bg:#3A2A10;
+  --err:#FFB4AB;--err-rgb:255,180,171;--err-bg:#3B1A19;
+  --destructive:#FF4245;
+
+  --hover:rgba(var(--on-surface-rgb),.08);
+  --pressed:rgba(var(--on-surface-rgb),.12);
+  --neutral-selected:rgba(var(--on-surface-rgb),.08);
+  --scrim:rgba(0,0,0,.32);--scrim-alert:rgba(0,0,0,.48);
+  --shadow-e1:0 1px 2px rgba(0,0,0,.5),0 10px 28px -6px rgba(0,0,0,.55);
+  --shadow-e2:0 2px 6px rgba(0,0,0,.5),0 32px 64px -12px rgba(0,0,0,.7);
+}
+
+:root[data-theme="dark"][data-mono="1"]{
+  --surface-page:#000000;--surface-card:#121316;
+  --surface-block:#1B1D21;--surface-inset:#26282D;
+  --surface-chrome:#0A0B0D;--surface-sheet:var(--surface-card);
+  --surface-float:var(--surface-block);
+}
+
+/* six accents — light */
+:root[data-accent="blue"]{--accent:#007AFF;--accent-rgb:0,122,255;--on-accent:#FFFFFF}
+:root[data-accent="violet"]{--accent:#6D4AFF;--accent-rgb:109,74,255;--on-accent:#FFFFFF}
+:root[data-accent="teal"]{--accent:#00796B;--accent-rgb:0,121,107;--on-accent:#FFFFFF}
+:root[data-accent="green"]{--accent:#2E7D32;--accent-rgb:46,125,50;--on-accent:#FFFFFF}
+:root[data-accent="orange"]{--accent:#B45309;--accent-rgb:180,83,9;--on-accent:#FFFFFF}
+:root[data-accent="rose"]{--accent:#C2185B;--accent-rgb:194,24,91;--on-accent:#FFFFFF}
+
+/* six accents — dark / pure black */
+:root[data-theme="dark"][data-accent="blue"]{--accent:#58A6FF;--accent-rgb:88,166,255;--on-accent:#001A33}
+:root[data-theme="dark"][data-accent="violet"]{--accent:#B7A6FF;--accent-rgb:183,166,255;--on-accent:#1B1040}
+:root[data-theme="dark"][data-accent="teal"]{--accent:#4FD8C8;--accent-rgb:79,216,200;--on-accent:#00201B}
+:root[data-theme="dark"][data-accent="green"]{--accent:#7BD88A;--accent-rgb:123,216,138;--on-accent:#06210C}
+:root[data-theme="dark"][data-accent="orange"]{--accent:#FFAA5C;--accent-rgb:255,170,92;--on-accent:#2A1200}
+:root[data-theme="dark"][data-accent="rose"]{--accent:#FF8FB1;--accent-rgb:255,143,177;--on-accent:#330A18}
+
+@media (max-width:599px){:root{--r-dash:34px}}
+
+:root[data-low-end="1"]{
+  --shadow-e1:none;--shadow-e2:none;
+  --dur-fast:0ms;--dur-mid:0ms;--dur-slow:0ms;
+  --motion-off:0ms;
+}
+
+@media (prefers-reduced-motion: reduce){
+  :root{--dur-fast:0ms;--dur-mid:0ms;--dur-slow:0ms}
+}

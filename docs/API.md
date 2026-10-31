@@ -170,10 +170,10 @@ SSE 断线由前端自动重连（EventSource 自带）。
 
 ## 6. 前端约定
 
-- 纯静态：`index.html` + `app.css` + `app.js`，**不引入任何 CDN / npm 依赖**，可离线使用（路由器场景）。
-- 风格参考 FlClash：深色优先、圆角卡片、左侧导航（移动端为底部 Tab）、节点卡片带延迟色块（绿 <200ms / 黄 <500ms / 红 ≥500ms / 灰 = 未测）。
+- 纯静态：`index.html` + `css/tokens.css` + `app.css` + `js/**`（经典脚本 + `window.MM`），**不引入任何 CDN / npm 依赖**，可离线使用（路由器场景）。
+- 风格参考 FlClash：四级明度表面、圆角卡片、桌面左侧栏 / 移动底部 dock、延迟只染文字（<600ms 成功 / ≥600ms 警告 / 超时错误 / 未测中性）。设计规范见 `docs/ui-redesign/spec.md`。
 - 所有文案中文；错误 toast 显示服务端 `error` 原文。
-- 轮询：`/api/status` 每 2s（页面可见时），`/api/nodes` 每 10s，流量走 SSE。
+- 轮询：`/api/status` 每 10s（低端 15s，页面可见时），`/api/nodes` 每 10s，连接页 2s，日志与流量走 SSE。
 - 写操作按钮需有 loading 与二次确认（删除订阅、停止引擎）。
 
 ---

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mihomo-merlin v2 效果预览</title>
+<style>
+  :root { color-scheme: light dark; --bg:#EDEEF1; --card:#FBFBFC; --text:#17181B; --muted:#5D636D; --line:#C6CAD1; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0F1013; --card:#1A1B1F; --text:#E7E8EA; --muted:#9AA0A8; --line:#2E3136; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font: 15px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 32px; }
+  h2 { font-size: 20px; margin: 40px 0 12px; }
+  figure { margin: 0 0 28px; background: var(--card); border-radius: 24px; padding: 12px; }
+  figure img { display:block; width:100%; height:auto; border-radius: 16px; }
+  figcaption { color: var(--muted); font-size: 13px; padding: 10px 6px 2px; }
+  .note { background: var(--card); border-radius: 16px; padding: 14px 18px; color: var(--muted); font-size: 14px; }
+  .note b { color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <h1>mihomo-merlin v2 效果预览</h1>
+  <p class="sub">按 docs/ui-redesign/spec.md 实现的真实页面，使用假 API 数据渲染。当前完成：概览、节点、订阅、规则、连接、日志；设置页正在实现中。</p>
+
+  <div class="note"><b>说明：</b>截图由真实面板代码 + 注入的假数据生成，不是手绘稿。桌面 1440×900，移动 390×844。</div>
+
+  <h2>概览 · 深色</h2>
+  <figure><img src="overview-dark.png" alt="概览深色桌面"><figcaption>1440×900 · 深色主题 · 运行中，含实时流量、订阅摘要、网络身份、服务连通性</figcaption></figure>
+
+  <h2>概览 · 浅色</h2>
+  <figure><img src="overview-light.png" alt="概览浅色桌面"><figcaption>1440×900 · 浅色主题（同一套 token，主色只影响交互）</figcaption></figure>
+
+  <h2>概览 · 纯黑</h2>
+  <figure><img src="overview-mono.png" alt="概览纯黑桌面"><figcaption>1440×900 · 纯黑（仅深色生效）</figcaption></figure>
+
+  <h2>概览 · 移动端</h2>
+  <figure><img src="overview-mobile-dark.png" alt="概览移动端"><figcaption>390×844 · 底部 5 项 dock；截图是整页长图，dock 固定位置由浏览器的全页截图方式决定</figcaption></figure>
+
+  <h2>节点 · 深色</h2>
+  <figure><img src="nodes-dark.png" alt="节点桌面"><figcaption>1440×900 · 代理组 chips、pinned 组头、84 条节点；延迟只在文字上染色（&lt;600ms 绿 / ≥600ms 黄 / 未测灰）</figcaption></figure>
+
+  <h2>节点 · 移动端</h2>
+  <figure><img src="nodes-mobile-dark.png" alt="节点移动端"><figcaption>390×844 · 搜索、分组 chips、节点行</figcaption></figure>
+
+  <h2>订阅 · 深色</h2>
+  <figure><img src="subs-dark.png" alt="订阅桌面"><figcaption>1440×900 · 状态/格式/节点数、打码 URL、自动更新、流量条、到期、操作行</figcaption></figure>
+
+  <h2>规则 · 深色</h2>
+  <figure><img src="rules-dark.png" alt="规则桌面"><figcaption>1440×900 · 只读规则列表、类型/内容/策略三列；长列表滚动时表头吸顶</figcaption></figure>
+
+  <h2>连接 · 深色</h2>
+  <figure><img src="connections-dark.png" alt="连接桌面"><figcaption>1440×900 · 统计 tile、搜索、连接表（主机/规则/链路/流量/时长/关闭）</figcaption></figure>
+
+  <h2>日志 · 深色</h2>
+  <figure><img src="logs-dark.png" alt="日志桌面"><figcaption>1440×900 · SSE 实时日志、级别/暂停/清屏、自动滚动状态</figcaption></figure>
+
+  <h2>订阅 · 移动端</h2>
+  <figure><img src="subs-mobile-dark.png" alt="订阅移动端"><figcaption>390×844 · 订阅卡单列，操作行换行收纳</figcaption></figure>
+
+  <h2>连接 · 移动端</h2>
+  <figure><img src="connections-mobile-dark.png" alt="连接移动端"><figcaption>390×844 · 每条连接一张卡，关闭按钮 44×44</figcaption></figure>
+
+  <h2>日志 · 移动端</h2>
+  <figure><img src="logs-mobile-dark.png" alt="日志移动端"><figcaption>390×844 · 级别/暂停/清屏在 App Bar，日志视口通栏</figcaption></figure>
+
+  <h2>设置 · 代理与端口（桌面）</h2>
+  <figure><img src="settings-proxy-dark.png" alt="设置代理与端口"><figcaption>1440×900 · 左栏分组导航 + 右栏表单；脏时保存按钮点亮</figcaption></figure>
+
+  <h2>设置 · 外观（桌面）</h2>
+  <figure><img src="settings-appearance-dark.png" alt="设置外观"><figcaption>1440×900 · 主题/主色/纯黑/低端模式，即时生效</figcaption></figure>
+
+  <h2>设置 · 内核（桌面）</h2>
+  <figure><img src="settings-kernel-dark.png" alt="设置内核"><figcaption>1440×900 · 当前内核、上传、在线更新、回滚</figcaption></figure>
+
+  <h2>设置 · 诊断与关于（桌面）</h2>
+  <figure><img src="settings-diagnostics-dark.png" alt="设置诊断"><figcaption>1440×900 · 服务状态 5 秒刷新、网络身份、IP 质量、关于</figcaption></figure>
+
+  <h2>设置列表（移动端）</h2>
+  <figure><img src="settings-mobile-dark.png" alt="设置列表移动端"><figcaption>390×844 · 5 组 12 行，行尾摘要值</figcaption></figure>
+
+  <h2>设置子页（移动端）</h2>
+  <figure><img src="settings-proxy-mobile-dark.png" alt="设置子页移动端"><figcaption>390×844 · 推入页，dock 隐藏，保存按钮在 App Bar</figcaption></figure>
+
+  <h2>更多 sheet（移动端）</h2>
+  <figure><img src="more-sheet-mobile-dark.png" alt="更多 sheet"><figcaption>390×844 · 规则 / 日志 / 外观 / 诊断 4 行</figcaption></figure>
+
+  <h2>添加订阅 sheet · 浅色（移动端）</h2>
+  <figure><img src="subs-add-sheet-light-mobile.png" alt="添加订阅 sheet 浅色"><figcaption>390×844 · 浅色下输入框使用 inset 填充，与 sheet 表面可区分</figcaption></figure>
+
+  <h2>节点搜索（移动端）</h2>
+  <figure><img src="nodes-search-mobile-dark.png" alt="节点搜索"><figcaption>390×844 · 搜索过滤与单一清除按钮</figcaption></figure>
+
+  <h2>诊断与关于 · 320px</h2>
+  <figure><img src="settings-diagnostics-320-dark.png" alt="诊断 320px"><figcaption>320×700 · 窄屏下设置行不截断标题、无横向滚动</figcaption></figure>
+</main>
+</body>
+</html>
