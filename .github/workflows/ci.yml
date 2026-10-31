@@ -26,5 +26,8 @@ jobs:
       - name: 前端静态检查
         run: python3 tests/ui_check.py
 
+      - name: Merlin 安装冒烟
+        run: sh tests/merlin_install_smoke.sh
+
       - name: 单元测试
         run: go test ./... -count=1

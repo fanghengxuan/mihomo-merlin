@@ -1,5 +1,13 @@
 # 更新记录
 
+## 未发布
+
+- 新增 **Asuswrt-Merlin（gnuton 等，无软件中心）原生安装器**：
+  `plugin/merlin/`、`tools/build-merlin-package.sh`、`tests/merlin_install_smoke.sh`
+- 安装到 `/jffs/mihomo-merlin`，自动维护 `/jffs/scripts/services-start` 与 `services-stop`
+- 支持 `NOKERNEL=1`、`PANEL_UPX=1`、`--keep-data` 卸载；仅支持 armv7l
+- 脚本层冒烟测试通过，尚未在 gnuton 真机验证
+
 ## 2.0.0（2026-10-31）
 
 - 面板 v2 重构：FlClash 风格四层表面（page/card/block/inset）、6 套主色、浅色/深色/纯黑、低端降级；7 个视图重做，设置页拆为 12 个子页，移动端 5 项 dock + 更多 sheet

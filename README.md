@@ -33,6 +33,8 @@
 > 面板打不开时：`ssh` 登录后执行 `/koolshare/scripts/mihomo_ctl.sh restart`，
 > 日志在 `/koolshare/mihomo/logs/panel.log`。
 
+> 没有软件中心（gnuton / 原生 Merlin）请直接看 §3.3。
+
 > 参与开发或反馈问题见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ---
@@ -133,7 +135,42 @@ sh /tmp/mihomo/install.sh
 
 `install.sh` 会做机型/架构/空间检查，安装后登记菜单（有 `dbus` 时）并启动面板。
 
-### 3.3 首次使用
+### 3.3 Asuswrt-Merlin（gnuton 等，无软件中心）
+
+软件中心包依赖 `/koolshare`；gnuton/asuswrt-merlin.ng 是 RMerlin 官方分支，没有软件中心。
+因此提供一个独立的 Merlin 安装包：
+
+1. 本地构建（Go 1.23+；内核与规则复用 `.cache`，先跑过一次 `./build.sh`）：
+
+   ```sh
+   GO=$HOME/go/bin/go ./tools/build-merlin-package.sh
+   # NOKERNEL=1 或 PANEL_UPX=1 用法同上
+   ```
+
+   产物：`dist/mihomo-merlin_<版本>_armv7_merlin.tar.gz`
+
+2. 路由器后台开启 **Administration → System → Enable JFFS custom scripts and configs**
+   （等价于 `nvram set jffs2_scripts=1 && nvram commit`）。
+3. 上传并安装：
+
+   ```sh
+   cd /tmp && tar -xzf mihomo-merlin_<版本>_armv7_merlin.tar.gz
+   sh /tmp/mihomo-merlin/install.sh
+   ```
+
+4. 安装到 `/jffs/mihomo-merlin`，同时写入 `/jffs/scripts/services-start` 与
+   `services-stop` 托管块；打开 `http://<路由器IP>:9380`。
+5. 卸载：`sh /jffs/mihomo-merlin/uninstall.sh [--keep-data]`。
+
+说明：
+
+- 仅支持 **armv7l**；TUF-AX3000 v1/v2 在 gnuton 3004 分支的支持列表内。
+- 没有软件中心菜单/卸载入口；升级时重新执行 `install.sh`，`data/` 下的订阅与设置会保留。
+- 面板自带看门狗会恢复内核与 iptables；开机后首次自动拉起约在 45 秒内。
+- 脚本层已用假根目录做安装/启动/停止/卸载冒烟测试，**尚未在 gnuton 真机验证**；
+  上真机前建议先在测试环境确认。
+
+### 3.4 首次使用
 
 1. 打开面板，进入「订阅」→「添加订阅」，粘贴机场链接（Clash YAML / base64 节点列表都支持）。
 2. 回到「概览」点电源按钮启动；LAN 设备自动走规则模式（国内直连、其余走代理）。
@@ -237,10 +274,14 @@ mihomo-merlin/
 │       ├── 00-core.js … 90-main.js
 │       └── views/            7 个视图 + 设置 + 更多 sheet
 ├── plugin/                   软件中心插件骨架（install.sh / ASP / ctl / 图标）
+│   └── merlin/               Asuswrt-Merlin 原生安装（无软件中心）
+├── tools/
+│   └── build-merlin-package.sh
 ├── tests/
 │   ├── ui_check.py           前端静态检查（扫描 web/**）
 │   ├── e2e.sh                静态检查 + 单测 + 真实内核 e2e + 安装冒烟
-│   └── install_smoke.sh      安装/卸载冒烟
+│   ├── install_smoke.sh      软件中心安装/卸载冒烟
+│   └── merlin_install_smoke.sh  Merlin 原生安装冒烟
 ├── docs/
 │   ├── API.md                HTTP API 契约
 │   ├── kernel.md             内核构建与取舍
@@ -259,6 +300,8 @@ mihomo-merlin/
 - 订阅协议覆盖 `ss / ssr / vmess / vless(reality) / trojan / hysteria / hysteria2 / tuic / socks5`。
 - **前端体积**：`web/` 原始约 332 KB（JS gzip 后约 58 KB），超过设计规范的自定目标；
   已按 [docs/ui-redesign/spec.md](docs/ui-redesign/spec.md) §10.3-7 记录为接受例外，以换取无构建、源码可直接维护。
+- **Merlin 原生安装未上真机**：gnuton 安装器只做了脚本层冒烟测试，尚未在 TUF-AX3000 的 gnuton 固件上验证；
+  软件中心版本已在同机型实测通过。
 
 ## 10. 构建
 
@@ -275,8 +318,8 @@ NOKERNEL=1 ./build.sh                         # 不含内核
 
 产物在 `dist/`：
 
-- `mihomo_<版本>_armv7.tar.gz` + `.sha256`
-- `NOKERNEL=1` 时为 `mihomo_<版本>_armv7_nokernel.tar.gz`
+- 软件中心：`mihomo_<版本>_armv7.tar.gz` + `.sha256`（`NOKERNEL=1` 时带 `_nokernel`）
+- Merlin：`mihomo-merlin_<版本>_armv7_merlin.tar.gz`，由 `tools/build-merlin-package.sh` 生成
 
 ## 11. 开发与测试
 
@@ -294,6 +337,7 @@ sh tests/e2e.sh
 
 # 安装/卸载冒烟（假根目录 + 桩命令，不需要 ARM 环境）
 sh tests/install_smoke.sh
+sh tests/merlin_install_smoke.sh
 ```
 
 本地调试面板：
