@@ -150,6 +150,11 @@ def main():
         if re.search(r"[A-Z]", n) or len(n) > 4:
             errors.append(f"app.js 调用了未定义的函数 {n}()（会抛 ReferenceError）")
 
+
+    # api() 内部已经 JSON.stringify，body 里再 stringify 会变成「字符串套 JSON」→ 后端报「请求体不是合法 JSON」
+    for m in re.finditer(r"api\([^)]*body:\s*JSON\.stringify", js, re.S):
+        errors.append("api() 的 body 里又调用了 JSON.stringify（双重编码，后端会报「请求体不是合法 JSON」）")
+
     try:
         subprocess.run(["node", "--check", f"{ROOT}/app.js"], check=True, capture_output=True)
     except FileNotFoundError:

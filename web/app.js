@@ -1195,7 +1195,7 @@ $('#logLevelSel').addEventListener('change', async (e) => {
   try {
     await api('/api/settings', {
       method: 'PUT',
-      body: JSON.stringify({ ...state.settings, logLevel: lv }),
+      body: { logLevel: lv },
     });
     state.settings.logLevel = lv;
     const set = $('#s-logLevel');
