@@ -5,17 +5,18 @@ PATH=/koolshare/bin:/bin:/usr/bin:/sbin:/usr/sbin
 export PATH
 
 echo "【$(TZ=UTC-8 date '+%Y%m%d %X')】: ================================================"
-echo "【$(TZ=UTC-8 date '+%Y%m%d %X')】:  Mihomo 清理工具 v1.0.0（安装后自动执行）"
+echo "【$(TZ=UTC-8 date '+%Y%m%d %X')】:  Mihomo 清理工具 v1.0.1（安装后自动执行）"
 echo "【$(TZ=UTC-8 date '+%Y%m%d %X')】: ================================================"
 
-/bin/sh "${DIR}/scripts/clean.sh"
+# 同时在屏幕上和 /tmp 留一份日志，方便装完把输出贴出来
+/bin/sh "${DIR}/scripts/clean.sh" 2>&1 | tee /tmp/mihomo-cleanup.log
 
 # 登记一下让软件中心认为安装成功（随后立刻撤掉，菜单里不会长期留着）
 if [ -x /koolshare/bin/dbus ]; then
 	/koolshare/bin/dbus set softcenter_module_mihomo-cleanup_name=mihomo-cleanup 2>/dev/null
 	/koolshare/bin/dbus set softcenter_module_mihomo-cleanup_title=Mihomo清理工具 2>/dev/null
 	/koolshare/bin/dbus set softcenter_module_mihomo-cleanup_description=清理旧版本残留并释放jffs空间 2>/dev/null
-	/koolshare/bin/dbus set softcenter_module_mihomo-cleanup_version=1.0.0 2>/dev/null
+	/koolshare/bin/dbus set softcenter_module_mihomo-cleanup_version=1.0.1 2>/dev/null
 	/koolshare/bin/dbus set softcenter_module_mihomo-cleanup_install=1 2>/dev/null
 fi
 

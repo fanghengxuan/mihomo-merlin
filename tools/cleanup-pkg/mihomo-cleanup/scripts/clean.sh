@@ -20,13 +20,27 @@ del() { # 描述 路径
 	[ -e "$2" ] && exists=1
 	[ -L "$2" ] && exists=1
 	if [ "$exists" = "1" ]; then
-		if [ -d "$2" ]; then
-			rm -rf "$2" 2>/dev/null
+		if [ -z "$RM" ]; then
+			say "⚠️ 没有可用的 rm，无法删除：$2"
+			return 0
+		fi
+		if [ -d "$2" ] && [ ! -L "$2" ]; then
+			err=$($RM -rf "$2" 2>&1)
 		else
-			rm -f "$2" 2>/dev/null
+			err=$($RM -f "$2" 2>&1)
+		fi
+		[ -n "$err" ] && say "  rm 输出：$err"
+		if [ -e "$2" ] || [ -L "$2" ]; then
+			# 兜底：用 find -depth -delete（busybox 通常支持）
+			if [ -d "$2" ] && [ ! -L "$2" ]; then
+				err2=$(find "$2" -depth -delete 2>&1)
+				[ -n "$err2" ] && say "  find 输出：$err2"
+			fi
 		fi
 		if [ -e "$2" ] || [ -L "$2" ]; then
 			say "⚠️ 未能删除：$1（$2）"
+			ls -ld "$2" 2>&1 | sed 's/^/  ls: /'
+			id 2>/dev/null | sed 's/^/  id: /'
 			return 0
 		fi
 		FREED=$((FREED + kb))
@@ -37,7 +51,25 @@ del() { # 描述 路径
 	return 0
 }
 
+FREE_BEFORE=$(df -k /jffs 2>/dev/null | awk 'NR==2 {print $4}')
 say "开始清理 mihomo 插件的历史残留"
+say "PATH=$PATH"
+for c in rm du df ls; do
+	p=$(command -v "$c" 2>/dev/null)
+	if [ -n "$p" ]; then say "命令 $c：$p"; else say "⚠️ 找不到命令 $c"; fi
+done
+# 选一个能用的 rm（有的固件把 busybox applet 放在别处）
+RM=""
+for c in /bin/rm /usr/bin/rm /usr/sbin/rm /sbin/rm; do
+	[ -x "$c" ] && { RM=$c; break; }
+done
+[ -n "$RM" ] || RM=$(command -v rm 2>/dev/null)
+if [ -z "$RM" ] && [ -x /bin/busybox ]; then
+	RM="/bin/busybox rm"
+fi
+say "使用的 rm：${RM:-（没有找到，删除会失败）}"
+mount 2>/dev/null | grep -E " /jffs | /koolshare " | sed 's/^/  mount: /'
+
 
 # 先停进程（旧版本可能在跑，文件被占用删不掉）
 if [ -x /koolshare/scripts/mihomo_ctl.sh ]; then
@@ -84,5 +116,12 @@ if [ -x /koolshare/bin/dbus ]; then
 fi
 
 FREE=$(df -k /jffs 2>/dev/null | awk 'NR==2 {print $4}')
+[ -n "$FREE" ] || FREE=$(df -k /koolshare 2>/dev/null | awk 'NR==2 {print $4}')
+[ -n "$FREE" ] || FREE="未知"
+if [ "${FREE_BEFORE:-}" != "" ] && [ "$FREE" != "未知" ]; then
+	GAIN=$(( FREE - FREE_BEFORE ))
+	[ "$GAIN" -gt 0 ] && say "按 df 计算，jffs 增加了 ${GAIN}KB"
+fi
 say "清理完成：释放约 $((FREED / 1024)) MB（${FREED}KB），jffs 当前剩余 ${FREE:-未知}KB"
-say "现在可以到「软件中心 → 离线安装」装 mihomo_1.7.5_armv7_lite.tar.gz（解压约 9.7MB）"
+say "现在可以到「软件中心 → 离线安装」装 mihomo_1.7.6_armv7_lite.tar.gz（解压约 9.7MB）"
+say "诊断日志：/tmp/mihomo-cleanup.log（如需反馈请贴这段）"
