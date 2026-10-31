@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -59,22 +60,43 @@ func fileExists(p string) bool {
 }
 
 // run 带超时执行命令，返回合并后的输出。
+// 超时后必须杀掉子进程（含其子进程组），否则 `mihomo -t`、iptables 等
+// 子进程会一直挂在路由器上，反复调用后耗尽内存。
 func run(timeout time.Duration, name string, args ...string) (string, error) {
-	type res struct {
-		out string
-		err error
+	c := command(name, args...)
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	var buf bytes.Buffer
+	c.Stdout = &buf
+	c.Stderr = &buf
+
+	if err := c.Start(); err != nil {
+		return "", err
 	}
-	ch := make(chan res, 1)
-	go func() {
-		c := command(name, args...)
-		out, err := c.CombinedOutput()
-		ch <- res{string(out), err}
-	}()
+	done := make(chan error, 1)
+	go func() { done <- c.Wait() }()
+
 	select {
-	case r := <-ch:
-		return r.out, r.err
+	case err := <-done:
+		return buf.String(), err
 	case <-time.After(timeout):
-		return "", errors.New("执行超时")
+		killProcessGroup(c)
+		select {
+		case <-done:
+			return buf.String(), fmt.Errorf("执行超时（%s）", timeout)
+		case <-time.After(2 * time.Second):
+			// 进程仍未回收，不再读取 buf（可能与 copy goroutine 竞争）。
+			return "", fmt.Errorf("执行超时（%s），进程未能退出", timeout)
+		}
+	}
+}
+
+func killProcessGroup(c *exec.Cmd) {
+	if c == nil || c.Process == nil {
+		return
+	}
+	pid := c.Process.Pid
+	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+		_ = c.Process.Kill()
 	}
 }
 

@@ -64,9 +64,9 @@ func NewHub(app *App) *Hub {
 }
 
 func (h *Hub) Start() {
-	go h.trafficLoop()
-	go h.logLoop()
-	go h.maintenanceLoop()
+	safeLoop("hub-traffic", h.trafficLoop)
+	safeLoop("hub-logs", h.logLoop)
+	safeLoop("hub-maintenance", h.maintenanceLoop)
 }
 
 // ---------- 流量 ----------
@@ -103,11 +103,13 @@ func (h *Hub) SubscribeTraffic() (chan TrafficSample, func()) {
 	h.tmu.Lock()
 	h.tsubs[c] = struct{}{}
 	h.tmu.Unlock()
+	// 退订只把 channel 从订阅表移除，不 close：发布方与退订并发时，
+	// 关闭 channel 会让仍在发送的 publish 触发 send on closed channel panic。
+	// channel 移除后由 GC 回收，SSE handler 由 request context 负责退出。
 	return c, func() {
 		h.tmu.Lock()
 		delete(h.tsubs, c)
 		h.tmu.Unlock()
-		close(c)
 	}
 }
 
@@ -188,7 +190,6 @@ func (h *Hub) SubscribeLogs() (chan LogEntry, []LogEntry, func()) {
 		h.lmu.Lock()
 		delete(h.lsubs, c)
 		h.lmu.Unlock()
-		close(c)
 	}
 }
 
@@ -213,12 +214,6 @@ func (h *Hub) logLoop() {
 // ---------- 后台维护 ----------
 
 func (h *Hub) maintenanceLoop() {
-	defer func() {
-		if r := recover(); r != nil {
-			h.addLog("error", fmt.Sprintf("后台任务异常：%v", r))
-			go h.maintenanceLoop()
-		}
-	}()
 	tickRefresh := time.NewTicker(10 * time.Minute)
 	tickCount := time.NewTicker(3 * time.Minute)
 	defer tickRefresh.Stop()
@@ -319,7 +314,7 @@ func newSampler(a *App) *sampler { return &sampler{app: a} }
 func (s *sampler) count() int64 { return s.n.Load() }
 
 func (s *sampler) Start() {
-	go func() {
+	safeLoop("connections-sampler", func() {
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 		for range t.C {
@@ -334,7 +329,7 @@ func (s *sampler) Start() {
 				s.app.hub.SetTotals(c.UploadTotal, c.DownloadTotal)
 			}
 		}
-	}()
+	})
 }
 
 // publishProgress 广播一条进度事件。
@@ -366,7 +361,6 @@ func (h *Hub) SubscribeProgress() (chan ProgressEvent, func()) {
 		h.pmu.Lock()
 		delete(h.psubs, c)
 		h.pmu.Unlock()
-		close(c)
 	}
 }
 

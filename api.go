@@ -104,20 +104,20 @@ func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"restartAt":    s.RestartAt,
 	}
 	if a.engine.Running() {
-		ver, _ := a.clash.Version()
 		pi := a.engine.PID()
+		ver, cfg, mem := a.coreStatus(pi)
 		engine["version"] = ver
 		engine["pid"] = pi
 		engine["uptime"] = a.engine.Uptime()
 		engine["mode"] = s.Mode
 		// 内核实际生效的模式（用于确认设置真的应用了）
-		if cfg, err := a.clash.Configs(); err == nil {
+		if cfg != nil {
 			engine["modeActual"] = cfg.Mode
 			engine["mixedPortActual"] = cfg.MixedPort
 		}
 		engine["redirPort"] = s.RedirPort
 		engine["mixedPort"] = s.MixedPort
-		engine["memory"] = memUsageMB(pi)
+		engine["memory"] = mem
 	}
 
 	writeJSON(w, 200, map[string]any{
@@ -147,6 +147,45 @@ func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"lastRefresh": lastRefresh,
 		},
 	})
+}
+
+// coreStatus 返回内核版本、实际配置与内存占用，带 TTL 缓存。
+// 面板每 3 秒轮询一次 /api/status，若每次都外呼内核，会在路由器上造成
+// 不必要的 CPU/网络开销；这里把 version(60s)/configs(10s)/内存(5s) 分层缓存。
+func (a *App) coreStatus(pid int) (string, *CoreConfig, float64) {
+	a.coreMu.Lock()
+	defer a.coreMu.Unlock()
+
+	now := time.Now()
+	if a.coreVersionAt.IsZero() || now.Sub(a.coreVersionAt) >= time.Minute {
+		if v, err := a.clash.Version(); err == nil {
+			a.coreVersion = v
+		}
+		// 失败也更新时间：避免内核 API 不可用时每个请求都重试。
+		a.coreVersionAt = now
+	}
+	if a.coreCfg == nil || now.Sub(a.coreCfgAt) >= 10*time.Second {
+		if cfg, err := a.clash.Configs(); err == nil {
+			a.coreCfg = cfg
+		}
+		a.coreCfgAt = now
+	}
+	if a.memPID != pid || now.Sub(a.memAt) >= 5*time.Second {
+		a.memMB = memUsageMB(pid)
+		a.memPID = pid
+		a.memAt = now
+	}
+	return a.coreVersion, a.coreCfg, a.memMB
+}
+
+// invalidateCoreCache 在启停内核或保存设置后让缓存立即失效。
+func (a *App) invalidateCoreCache() {
+	a.coreMu.Lock()
+	a.coreVersionAt = time.Time{}
+	a.coreCfg = nil
+	a.coreCfgAt = time.Time{}
+	a.memAt = time.Time{}
+	a.coreMu.Unlock()
 }
 
 func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +267,7 @@ func (a *App) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "保存设置失败："+err.Error())
 		return
 	}
+	a.invalidateCoreCache()
 	a.addLog("info", "设置已更新")
 
 	// 同步应用：设置里的 mode / 端口 / 规则集都会影响运行中的内核，
@@ -292,10 +332,7 @@ func (a *App) appReload() error {
 
 // ---------- 订阅 ----------
 
-// subGlobalInterval 当前全局订阅更新间隔（小时，0=关闭），由 handler 在构造 DTO 前设置。
-var subGlobalInterval int
-
-func subDTO(s Sub, reveal bool) map[string]any {
+func subDTO(s Sub, reveal bool, globalInterval int) map[string]any {
 	return map[string]any{
 		"id":            s.ID,
 		"name":          s.Name,
@@ -309,17 +346,17 @@ func subDTO(s Sub, reveal bool) map[string]any {
 		"error":         s.Error,
 		"traffic":       s.Traffic,
 		"skipped":       s.Skipped,
-		"autoUpdate":    autoUpdateInfo(s),
+		"autoUpdate":    autoUpdateInfo(s, globalInterval),
 		"includeFilter": s.IncludeFilter,
 		"excludeFilter": s.ExcludeFilter,
 	}
 }
 
 // autoUpdateInfo 计算该订阅的自动更新状态与下次时间。
-func autoUpdateInfo(s Sub) map[string]any {
+func autoUpdateInfo(s Sub, globalInterval int) map[string]any {
 	eff := s.Interval
 	if eff <= 0 {
-		eff = subGlobalInterval
+		eff = globalInterval
 	}
 	manual := strings.TrimSpace(s.URL) == ""
 	out := map[string]any{
@@ -340,10 +377,10 @@ func autoUpdateInfo(s Sub) map[string]any {
 
 func (a *App) handleListSubs(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
-	subGlobalInterval = a.settings.SubInterval
+	globalInterval := a.settings.SubInterval
 	out := make([]map[string]any, 0, len(a.subs))
 	for _, s := range a.subs {
-		out = append(out, subDTO(s, false))
+		out = append(out, subDTO(s, false, globalInterval))
 	}
 	a.mu.RUnlock()
 	writeJSON(w, 200, map[string]any{"ok": true, "subs": out})
@@ -356,7 +393,7 @@ func (a *App) handleGetSub(w http.ResponseWriter, r *http.Request) {
 	sub, _ := a.findSub(id)
 	var dto map[string]any
 	if sub != nil {
-		dto = subDTO(*sub, reveal)
+		dto = subDTO(*sub, reveal, a.settings.SubInterval)
 	}
 	a.mu.RUnlock()
 	if dto == nil {
@@ -413,14 +450,6 @@ func (a *App) handleCreateSub(w http.ResponseWriter, r *http.Request) {
 		body.Interval = 0
 	}
 
-	a.mu.Lock()
-	dup := a.subNameExists(body.Name, "")
-	a.mu.Unlock()
-	if dup {
-		writeErr(w, 400, fmt.Sprintf("订阅名称「%s」已存在，请换一个", body.Name))
-		return
-	}
-
 	sub := Sub{
 		ID:            "s_" + randomToken(4),
 		Name:          body.Name,
@@ -432,17 +461,28 @@ func (a *App) handleCreateSub(w http.ResponseWriter, r *http.Request) {
 		ExcludeFilter: strings.TrimSpace(body.ExcludeFilter),
 	}
 
-	a.subMu.Lock()
+	// 查重与追加放在同一把锁里，避免两个并发请求同时通过查重。
 	a.mu.Lock()
-	a.subs = append(a.subs, sub)
-	idx := len(a.subs) - 1
-	err := a.refreshSubByID(sub.ID)
-	var dto map[string]any
-	if idx < len(a.subs) {
-		dto = subDTO(a.subs[idx], true)
+	if a.subNameExists(body.Name, "") {
+		a.mu.Unlock()
+		writeErr(w, 400, fmt.Sprintf("订阅名称「%s」已存在，请换一个", body.Name))
+		return
 	}
+	a.subs = append(a.subs, sub)
 	a.mu.Unlock()
-	a.subMu.Unlock()
+
+	// 网络拉取不持有 a.mu：期间 /api/subs、/api/status 等读接口不受阻塞。
+	err := a.refreshSubByID(sub.ID)
+
+	a.mu.RLock()
+	cur, _ := a.findSub(sub.ID)
+	var dto map[string]any
+	var finalCount int
+	if cur != nil {
+		dto = subDTO(*cur, true, a.settings.SubInterval)
+		finalCount = cur.NodeCount
+	}
+	a.mu.RUnlock()
 
 	if err != nil {
 		// 创建成功但拉取失败：保留订阅，状态里带错误
@@ -454,26 +494,25 @@ func (a *App) handleCreateSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 注意：必须查切片里的那份，sub 只是 append 进去的副本，
-	// refreshSubByID 更新的是 a.subs[idx]，副本上的 NodeCount 永远是旧值。
+	// 解析出 0 个节点时补一条可操作的提示，并刷新 DTO。
 	a.mu.Lock()
-	cur, _ := a.findSub(sub.ID)
-	var finalCount int
+	cur, _ = a.findSub(sub.ID)
 	if cur != nil {
 		finalCount = cur.NodeCount
 		if finalCount == 0 {
 			cur.Status = "error"
 			cur.Error = "解析出 0 个节点：可能是暂不支持的协议，点「原始内容」看订阅返回了什么"
 		}
+		_ = a.saveSubsLocked()
+		dto = subDTO(*cur, true, a.settings.SubInterval)
 	}
-	_ = a.saveSubsLocked()
 	a.mu.Unlock()
 	if finalCount == 0 {
 		a.prog("add", sub.Name, "error", "解析出 0 个节点，可在订阅卡片点「原始内容」查看返回内容", true, true)
 	} else {
 		a.prog("add", sub.Name, "nodes", fmt.Sprintf("内核已加载 %d 个节点", finalCount), false, false)
 	}
-	a.addLog("info", fmt.Sprintf("已添加订阅 %s（%d 个节点）", sub.Name, sub.NodeCount))
+	a.addLog("info", fmt.Sprintf("已添加订阅 %s（%d 个节点）", sub.Name, finalCount))
 	if a.engine.Running() {
 		a.prog("add", sub.Name, "reload", "重新生成配置并热重载内核…", false, false)
 		_ = a.appReload()
@@ -498,12 +537,10 @@ func (a *App) handleUpdateSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.subMu.Lock()
 	a.mu.Lock()
 	sub, _ := a.findSub(id)
 	if sub == nil {
 		a.mu.Unlock()
-		a.subMu.Unlock()
 		writeErr(w, 404, "订阅不存在")
 		return
 	}
@@ -512,7 +549,6 @@ func (a *App) handleUpdateSub(w http.ResponseWriter, r *http.Request) {
 		newName := strings.TrimSpace(*body.Name)
 		if a.subNameExists(newName, id) {
 			a.mu.Unlock()
-			a.subMu.Unlock()
 			writeErr(w, 400, fmt.Sprintf("订阅名称「%s」已存在，请换一个", newName))
 			return
 		}
@@ -520,15 +556,17 @@ func (a *App) handleUpdateSub(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.URL != nil {
 		nu := strings.TrimSpace(*body.URL)
-		if u, err := url.Parse(nu); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-			a.mu.Unlock()
-			a.subMu.Unlock()
-			writeErr(w, 400, "订阅地址必须是 http/https 链接")
-			return
-		}
-		if nu != sub.URL {
-			sub.URL = nu
-			refetch = true
+		// 前端编辑时可能把脱敏后的 *** 回传：视为未修改，避免把订阅地址写坏。
+		if nu != "" && !strings.Contains(nu, "***") {
+			if u, err := url.Parse(nu); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+				a.mu.Unlock()
+				writeErr(w, 400, "订阅地址必须是 http/https 链接")
+				return
+			}
+			if nu != sub.URL {
+				sub.URL = nu
+				refetch = true
+			}
 		}
 	}
 	if body.Interval != nil {
@@ -548,19 +586,27 @@ func (a *App) handleUpdateSub(w http.ResponseWriter, r *http.Request) {
 		sub.ExcludeFilter = strings.TrimSpace(*body.ExcludeFilter)
 	}
 	var err error
-	if refetch {
-		err = a.refreshSubByID(id)
-	} else {
+	if !refetch {
 		err = a.saveSubsLocked()
 	}
-	dto := subDTO(*sub, false)
 	a.mu.Unlock()
-	a.subMu.Unlock()
 
+	if refetch {
+		// 网络拉取不持锁；refreshSubByID 内部用 subMu 串行化。
+		err = a.refreshSubByID(id)
+	}
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
+
+	a.mu.RLock()
+	var dto map[string]any
+	if cur, _ := a.findSub(id); cur != nil {
+		dto = subDTO(*cur, false, a.settings.SubInterval)
+	}
+	a.mu.RUnlock()
+
 	if a.engine.Running() {
 		_ = a.appReload()
 	}
@@ -583,10 +629,11 @@ func (a *App) handleDeleteSub(w http.ResponseWriter, r *http.Request) {
 	a.subs = append(a.subs[:idx], a.subs[idx+1:]...)
 	_ = a.saveSubsLocked()
 	a.mu.Unlock()
-	a.subMu.Unlock()
 
+	// 仍在 subMu 内：避免正在进行的刷新把刚删掉的 provider 文件又写回来。
 	_ = removeIfExists(a.providerPath(id))
 	_ = removeIfExists(filepath.Join(a.dataDir, "cache", id+".sub"))
+	a.subMu.Unlock()
 	a.addLog("info", "已删除订阅 "+name)
 	if a.engine.Running() {
 		_ = a.appReload()
@@ -597,30 +644,31 @@ func (a *App) handleDeleteSub(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleRefreshSub(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	a.subMu.Lock()
-	a.mu.Lock()
-	sub, _ := a.findSub(id)
-	if sub == nil {
-		a.mu.Unlock()
-		a.subMu.Unlock()
-		writeErr(w, 404, "订阅不存在")
-		return
-	}
 	err := a.refreshSubByID(id)
-	dto := subDTO(*sub, false)
-	a.mu.Unlock()
-	a.subMu.Unlock()
+
+	a.mu.RLock()
+	var dto map[string]any
+	name := ""
+	if cur, _ := a.findSub(id); cur != nil {
+		dto = subDTO(*cur, false, a.settings.SubInterval)
+		name = cur.Name
+	}
+	a.mu.RUnlock()
 
 	if err != nil {
-		writeErr(w, 502, err.Error())
+		if err.Error() == "订阅不存在" {
+			writeErr(w, 404, err.Error())
+		} else {
+			writeErr(w, 502, err.Error())
+		}
 		return
 	}
 	if a.engine.Running() {
-		a.prog("refresh", dto["name"].(string), "reload", "重新生成配置并热重载内核…", false, false)
+		a.prog("refresh", name, "reload", "重新生成配置并热重载内核…", false, false)
 		_ = a.appReload()
 		a.hub.syncProviderCounts()
 	}
-	a.prog("refresh", dto["name"].(string), "done", "订阅已更新", true, false)
+	a.prog("refresh", name, "done", "订阅已更新", true, false)
 	writeJSON(w, 200, okBody(map[string]any{"sub": dto}))
 }
 
@@ -635,16 +683,14 @@ func (a *App) handleRefreshAll(w http.ResponseWriter, r *http.Request) {
 	refreshed, failed := 0, 0
 	var firstErr string
 	for _, id := range ids {
-		a.subMu.Lock()
-		a.mu.Lock()
-		if sub, _ := a.findSub(id); sub != nil && strings.TrimSpace(sub.URL) == "" {
-			a.mu.Unlock()
-			a.subMu.Unlock()
+		a.mu.RLock()
+		sub, _ := a.findSub(id)
+		manual := sub == nil || strings.TrimSpace(sub.URL) == ""
+		a.mu.RUnlock()
+		if manual {
 			continue
 		}
 		err := a.refreshSubByID(id)
-		a.mu.Unlock()
-		a.subMu.Unlock()
 		if err != nil {
 			failed++
 			if firstErr == "" {
@@ -954,8 +1000,13 @@ func joinDest(ip, port string) string {
 // connections 保留旧的 clash 风格快照以兼容老前端。
 // 内核未运行或读取失败时同样返回 200，只是 rows 为空并带 err 说明。
 func (a *App) handleConnections(w http.ResponseWriter, r *http.Request) {
+	// 新前端传 legacy=0 时跳过旧 connections 数组，响应体约减半。
+	legacy := r.URL.Query().Get("legacy") != "0"
 	rows := make([]connRow, 0)
-	conns := make([]map[string]any, 0)
+	var conns []map[string]any
+	if legacy {
+		conns = make([]map[string]any, 0)
+	}
 	var up, down, upTotal, downTotal int64
 	errText := ""
 
@@ -987,16 +1038,18 @@ func (a *App) handleConnections(w http.ResponseWriter, r *http.Request) {
 			})
 			up += c.Upload
 			down += c.Download
-			conns = append(conns, map[string]any{
-				"id":       c.ID,
-				"host":     firstNonEmpty(c.Metadata.SniffHost, c.Metadata.Host, c.Metadata.DestIP),
-				"network":  c.Metadata.Network,
-				"rule":     firstNonEmpty(c.RulePayload, c.Rule),
-				"chains":   chains,
-				"upload":   c.Upload,
-				"download": c.Download,
-				"start":    c.Start,
-			})
+			if legacy {
+				conns = append(conns, map[string]any{
+					"id":       c.ID,
+					"host":     firstNonEmpty(c.Metadata.SniffHost, c.Metadata.Host, c.Metadata.DestIP),
+					"network":  c.Metadata.Network,
+					"rule":     firstNonEmpty(c.RulePayload, c.Rule),
+					"chains":   chains,
+					"upload":   c.Upload,
+					"download": c.Download,
+					"start":    c.Start,
+				})
+			}
 		}
 	}
 
@@ -1009,8 +1062,10 @@ func (a *App) handleConnections(w http.ResponseWriter, r *http.Request) {
 		"downText":      humanBytes(down),
 		"uploadTotal":   upTotal,
 		"downloadTotal": downTotal,
-		"connections":   conns,
 		"rows":          rows,
+	}
+	if legacy {
+		body["connections"] = conns
 	}
 	if errText != "" {
 		body["err"] = errText
@@ -1288,7 +1343,10 @@ func (a *App) handleImportSub(w http.ResponseWriter, r *http.Request) {
 		go a.hub.syncProviderCounts()
 	}
 	a.prog("import", name, "done", "导入完成", true, false)
-	writeJSON(w, 200, map[string]any{"ok": true, "id": sub.ID, "sub": subDTO(sub, true)})
+	a.mu.RLock()
+	globalInterval := a.settings.SubInterval
+	a.mu.RUnlock()
+	writeJSON(w, 200, map[string]any{"ok": true, "id": sub.ID, "sub": subDTO(sub, true, globalInterval)})
 }
 
 // handleProgress 推送订阅任务进度（拉取/解析/写盘/重载），避免用户只能干等。

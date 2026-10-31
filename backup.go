@@ -82,13 +82,18 @@ func (a *App) restoreBackup(b *BackupBundle) error {
 
 	subs := make([]Sub, 0, len(b.Subs))
 	for _, sub := range b.Subs {
-		if strings.TrimSpace(sub.ID) == "" {
+		if !validSubID(strings.TrimSpace(sub.ID)) {
+			// 非法 ID（空、带 / 或 ..）一律重新生成，避免后续写 provider 时路径穿越。
 			sub.ID = "s_" + randomToken(4)
 		}
 		if strings.TrimSpace(sub.Name) == "" {
 			sub.Name = "恢复的订阅"
 		}
 		subs = append(subs, sub)
+	}
+	allowedProvider := make(map[string]bool, len(subs))
+	for _, s := range subs {
+		allowedProvider[s.ID] = true
 	}
 
 	a.subMu.Lock()
@@ -106,7 +111,7 @@ func (a *App) restoreBackup(b *BackupBundle) error {
 	}
 
 	for id, content := range b.Providers {
-		if strings.TrimSpace(id) == "" || strings.TrimSpace(content) == "" {
+		if !validSubID(id) || !allowedProvider[id] || strings.TrimSpace(content) == "" {
 			continue
 		}
 		path := a.providerPath(id)

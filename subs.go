@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,14 @@ func (a *App) saveSubsLocked() error {
 
 func (a *App) providerPath(id string) string {
 	return filepath.Join(a.dataDir, "providers", id+".json")
+}
+
+// subIDPattern 限制订阅 ID 的字符集，防止备份/导入数据构造 "../../x"
+// 之类的路径穿越。
+var subIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+func validSubID(id string) bool {
+	return subIDPattern.MatchString(id)
 }
 
 func (a *App) findSub(id string) (*Sub, int) {
@@ -166,18 +175,49 @@ func parseUserInfo(h string) *Traffic {
 	return t
 }
 
-// refreshSubByID 拉取单条订阅；调用方需自行串行化。
+// refreshSubByID 拉取单条订阅。
+//
+// 网络拉取（最长 45 秒）绝不持有 a.mu：先复制订阅快照、释放锁，拉完后再加锁
+// 把结果合并回切片。期间 /api/subs、/api/status 等读接口只被微秒级持锁挡住。
+// subMu 串行化同一条订阅的网络刷新，并与删除操作互斥。
 func (a *App) refreshSubByID(id string) error {
+	a.subMu.Lock()
+	defer a.subMu.Unlock()
+
+	a.mu.RLock()
 	sub, _ := a.findSub(id)
 	if sub == nil {
+		a.mu.RUnlock()
 		return errors.New("订阅不存在")
 	}
-	if err := a.fetchSub(sub); err != nil {
-		sub.Status = "error"
-		sub.Error = err.Error()
-		_ = a.saveSubsLocked()
-		return err
+	snap := *sub
+	a.mu.RUnlock()
+
+	fetchErr := a.fetchSub(&snap)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	cur, _ := a.findSub(id)
+	if cur == nil {
+		// 订阅已经被删除：清掉刚落盘的节点文件，避免残留。
+		_ = removeIfExists(a.providerPath(id))
+		return errors.New("订阅已被删除")
 	}
+	if fetchErr != nil {
+		cur.Status = "error"
+		cur.Error = fetchErr.Error()
+		_ = a.saveSubsLocked()
+		return fetchErr
+	}
+
+	cur.Format = snap.Format
+	cur.NodeCount = snap.NodeCount
+	cur.Skipped = snap.Skipped
+	cur.UpdatedAt = snap.UpdatedAt
+	cur.Status = snap.Status
+	cur.Error = snap.Error
+	cur.Traffic = snap.Traffic
 	return a.saveSubsLocked()
 }
 
@@ -231,13 +271,7 @@ func (a *App) refreshDueSubs() {
 		if !subUpdateDue(s, interval, now) {
 			continue
 		}
-		a.subMu.Lock()
-		err := func() error {
-			a.mu.Lock()
-			defer a.mu.Unlock()
-			return a.refreshSubByID(s.ID)
-		}()
-		a.subMu.Unlock()
+		err := a.refreshSubByID(s.ID)
 		if err != nil {
 			a.addLog("warning", fmt.Sprintf("订阅 %s 自动更新失败：%v", s.Name, err))
 			continue
@@ -251,7 +285,10 @@ func (a *App) refreshDueSubs() {
 
 // uaString 按设置返回订阅请求的 UA（对齐 fancyss 的 UA 预设与 MCLite 的固定 clash.meta）
 func (a *App) uaString() string {
-	switch a.settings.SubUA {
+	a.mu.RLock()
+	s := a.settings
+	a.mu.RUnlock()
+	switch s.SubUA {
 	case "curl":
 		return "curl/8.5.0"
 	case "v2rayn":
@@ -261,8 +298,8 @@ func (a *App) uaString() string {
 	case "shadowrocket":
 		return "Shadowrocket/2.2.9"
 	case "custom":
-		if strings.TrimSpace(a.settings.SubUACustom) != "" {
-			return strings.TrimSpace(a.settings.SubUACustom)
+		if strings.TrimSpace(s.SubUACustom) != "" {
+			return strings.TrimSpace(s.SubUACustom)
 		}
 	}
 	return userAgent // 默认 clash.meta/x
@@ -282,7 +319,10 @@ func (a *App) newHTTPClient(viaProxy, insecure bool) *http.Client {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	if viaProxy {
-		proxyURL, _ := url.Parse("http://127.0.0.1:" + itoa(a.settings.MixedPort))
+		a.mu.RLock()
+		mixedPort := a.settings.MixedPort
+		a.mu.RUnlock()
+		proxyURL, _ := url.Parse("http://127.0.0.1:" + itoa(mixedPort))
 		tr.Proxy = http.ProxyURL(proxyURL)
 	}
 	return &http.Client{Transport: tr, Timeout: 45 * time.Second}
@@ -395,7 +435,9 @@ func (a *App) doFetchOnce(rawURL string, viaProxy, insecure bool, tag string) (*
 // doFetch 带重试：最多 3 次，短超时（fancyss 用 --connect-timeout 5 --retry 3）。
 func (a *App) doFetch(rawURL string, viaProxy bool, tag string) (*http.Response, []byte, error) {
 	var lastErr error
+	a.mu.RLock()
 	insecure := a.settings.SubInsecure
+	a.mu.RUnlock()
 	for i := 0; i < 3; i++ {
 		resp, body, err := a.doFetchOnce(rawURL, viaProxy, insecure, tag)
 		if err == nil {
@@ -422,7 +464,9 @@ func isCertErr(err error) bool {
 
 // fetchSubscription 拉取订阅：按设置决定直连/代理，失败自动换另一种再试一次。
 func (a *App) fetchSubscription(rawURL, subName string) (*http.Response, []byte, error) {
+	a.mu.RLock()
 	mode := a.settings.SubProxyMode
+	a.mu.RUnlock()
 	var attempts []bool
 	switch mode {
 	case "direct":
@@ -446,7 +490,8 @@ func (a *App) fetchSubscription(rawURL, subName string) (*http.Response, []byte,
 		resp, body, err := a.doFetch(rawURL, viaProxy, subName)
 		if err == nil {
 			if viaProxy {
-				a.addLog("info", "订阅通过本机代理拉取成功："+rawURL)
+				// 日志会通过 SSE 广播，订阅 URL 必须打码后写入。
+				a.addLog("info", "订阅通过本机代理拉取成功："+maskURL(rawURL, false))
 			}
 			return resp, body, nil
 		}
@@ -488,6 +533,9 @@ func describeNetErr(err error, rawURL string) error {
 
 // saveSubRaw 保存最近一次拉到的原始内容，供「查看原始内容」排查格式问题。
 func (a *App) saveSubRaw(id string, body []byte) {
+	if !validSubID(id) {
+		return
+	}
 	dir := filepath.Join(a.dataDir, "cache")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
@@ -501,6 +549,9 @@ func (a *App) saveSubRaw(id string, body []byte) {
 
 // readSubRaw 读取原始内容。
 func (a *App) readSubRaw(id string) ([]byte, bool) {
+	if !validSubID(id) {
+		return nil, false
+	}
 	b, err := os.ReadFile(filepath.Join(a.dataDir, "cache", id+".sub"))
 	if err != nil {
 		return nil, false

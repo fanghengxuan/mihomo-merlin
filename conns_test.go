@@ -731,7 +731,10 @@ func TestCheckScheduledRestart(t *testing.T) {
 	t.Setenv("MM_NO_IPTABLES", "1") // 测试环境不要真的碰防火墙
 
 	a := newBackendTestApp(t)
-	a.engine.running = true // 只让 Running() 为真；没有 config 时 Restart 是空操作
+	a.engine.running = true // 只让 Running() 为真，调度器才会继续检查
+	oldRestart := restartEngine
+	restartEngine = func(*Engine) error { return nil } // 调度测试不启动真实内核
+	t.Cleanup(func() { restartEngine = oldRestart })
 	a.settings.AutoRestart = false
 	a.settings.RestartAt = "04:30"
 

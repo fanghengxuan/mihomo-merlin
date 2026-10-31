@@ -364,7 +364,10 @@ func (a *App) probeExitIP(viaProxy bool) *ExitInfo {
 
 // doFetchQuiet 轻量请求：不产生进度事件，用于状态类查询。
 func (a *App) doFetchQuiet(rawURL string, viaProxy bool) (*http.Response, []byte, error) {
-	client := a.newHTTPClient(viaProxy, a.settings.SubInsecure)
+	a.mu.RLock()
+	insecure := a.settings.SubInsecure
+	a.mu.RUnlock()
+	client := a.newHTTPClient(viaProxy, insecure)
 	client.Timeout = 5 * time.Second
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {

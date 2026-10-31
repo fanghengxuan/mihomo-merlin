@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -249,6 +250,9 @@ func (a *App) CleanupStorage() (int64, []string) {
 }
 
 // truncateFileKeepTail 只保留文件末尾 keep 字节，返回释放的字节数。
+//
+// 必须原地截断而不是写临时文件再 rename：mihomo 以 O_APPEND 持有日志 fd，
+// rename 后进程仍写旧 inode，磁盘空间不会释放，直到内核重启。
 func truncateFileKeepTail(path string, keep int64) (int64, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -257,39 +261,41 @@ func truncateFileKeepTail(path string, keep int64) (int64, error) {
 	if fi.Size() <= keep {
 		return 0, nil
 	}
+	if keep < 0 {
+		keep = 0
+	}
+
+	tail := make([]byte, keep)
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
 	if _, err := f.Seek(fi.Size()-keep, 0); err != nil {
+		f.Close()
 		return 0, err
 	}
-	tmp := path + ".tail"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	n, readErr := io.ReadFull(f, tail)
+	f.Close()
+	if readErr != nil && readErr != io.ErrUnexpectedEOF && readErr != io.EOF {
+		return 0, readErr
+	}
+	tail = tail[:n]
+
+	out, err := os.OpenFile(path, os.O_RDWR, 0o644)
 	if err != nil {
 		return 0, err
 	}
-	buf := make([]byte, 64<<10)
-	var written int64
-	for {
-		n, rerr := f.Read(buf)
-		if n > 0 {
-			if _, werr := out.Write(buf[:n]); werr != nil {
-				out.Close()
-				return 0, werr
-			}
-			written += int64(n)
-		}
-		if rerr != nil {
-			break
-		}
-	}
-	out.Close()
-	if err := os.Rename(tmp, path); err != nil {
+	defer out.Close()
+	if err := out.Truncate(0); err != nil {
 		return 0, err
 	}
-	return fi.Size() - written, nil
+	if _, err := out.WriteAt(tail, 0); err != nil {
+		return 0, err
+	}
+	if err := out.Sync(); err != nil {
+		return 0, err
+	}
+	return fi.Size() - int64(len(tail)), nil
 }
 
 // storageJanitor 定期清理，避免小分区的路由器被日志与备份撑满。

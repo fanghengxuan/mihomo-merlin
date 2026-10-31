@@ -20,11 +20,21 @@ import (
 type Engine struct {
 	app *App
 
+	// life 串行化 Start/Stop/Restart：配置校验最长 90 秒，不能只靠检查 running
+	// 后再解锁，否则 HTTP、自启与看门狗可以并发拉起两个内核。
+	life sync.Mutex
+	// iptMu 串行化 iptables 读写，避免看门狗与 Stop 交错。
+	iptMu sync.Mutex
+
 	mu        sync.Mutex
 	cmd       *exec.Cmd
 	running   bool
 	startedAt time.Time
 	lastErr   string
+	// gen 标识当前生命周期。进程退出时只有仍然是自己这一代才允许清理规则，
+	// 否则旧进程会把新实例的 iptables 清掉。
+	gen     uint64
+	cmdDone chan struct{}
 
 	applied   bool
 	lastApply int64
@@ -100,6 +110,12 @@ func (e *Engine) rotateLog() {
 
 // Start 校验配置后启动内核，并应用透明代理规则。
 func (e *Engine) Start() error {
+	e.life.Lock()
+	defer e.life.Unlock()
+	return e.startLocked()
+}
+
+func (e *Engine) startLocked() error {
 	e.mu.Lock()
 	if e.running {
 		e.mu.Unlock()
@@ -147,24 +163,39 @@ func (e *Engine) Start() error {
 		return fmt.Errorf("启动内核失败: %v", err)
 	}
 
+	done := make(chan struct{})
 	e.mu.Lock()
 	e.cmd = cmd
 	e.running = true
 	e.startedAt = time.Now()
 	e.lastErr = ""
+	e.gen++
+	gen := e.gen
+	e.cmdDone = done
 	e.mu.Unlock()
 
 	a := e.app
+	a.invalidateCoreCache()
 	setEngineWanted(a.dataDir, true)
 	a.addLog("info", fmt.Sprintf("mihomo 已启动（pid %d）", cmd.Process.Pid))
 
 	go func() {
 		err := cmd.Wait()
 		lf.Close()
+
 		e.mu.Lock()
-		e.running = false
-		e.cmd = nil
+		current := e.gen == gen && e.cmd == cmd
+		if current {
+			e.running = false
+			e.cmd = nil
+		}
 		e.mu.Unlock()
+		close(done)
+
+		if !current {
+			// Stop/Restart 已经接管这一代，规则由接管方清理。
+			return
+		}
 		_ = e.ClearIptables()
 		if err != nil {
 			a.addLog("error", fmt.Sprintf("mihomo 进程退出：%v", err))
@@ -174,8 +205,8 @@ func (e *Engine) Start() error {
 		}
 	}()
 
-	if err := e.waitReady(20 * time.Second); err != nil {
-		_ = e.Stop()
+	if err := e.waitReady(20*time.Second, gen); err != nil {
+		_ = e.stopLocked(false)
 		return err
 	}
 
@@ -220,10 +251,13 @@ func (e *Engine) setErr(s string) {
 	e.mu.Unlock()
 }
 
-func (e *Engine) waitReady(timeout time.Duration) error {
+func (e *Engine) waitReady(timeout time.Duration, gen uint64) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if !e.Running() {
+		e.mu.Lock()
+		alive := e.running && e.gen == gen
+		e.mu.Unlock()
+		if !alive {
 			return errors.New("内核启动后立即退出，请查看日志")
 		}
 		if _, err := e.app.clash.Version(); err == nil {
@@ -236,58 +270,73 @@ func (e *Engine) waitReady(timeout time.Duration) error {
 
 // Stop 停止内核并清理规则。
 func (e *Engine) Stop() error {
+	e.life.Lock()
+	defer e.life.Unlock()
+	return e.stopLocked(false)
+}
+
+// stopLocked 要求调用方持有 e.life。keepWanted=true 时保留「用户希望它运行」
+// 的标记（内部重启用），否则一并清除。
+func (e *Engine) stopLocked(keepWanted bool) error {
 	e.mu.Lock()
 	cmd := e.cmd
+	done := e.cmdDone
 	running := e.running
+	// 递增代际：旧的 cmd.Wait 看到代际不匹配后不再清理规则，
+	// 由本次 Stop 统一清理，避免和随后启动的新实例互相踩。
+	e.gen++
+	e.running = false
+	e.cmd = nil
 	e.mu.Unlock()
 
+	e.app.invalidateCoreCache()
 	_ = e.ClearIptables()
-	setEngineWanted(e.app.dataDir, false)
+	if !keepWanted {
+		setEngineWanted(e.app.dataDir, false)
+	}
 
-	if !running || cmd == nil || cmd.Process == nil {
+	if cmd == nil || cmd.Process == nil {
+		if running {
+			e.app.addLog("info", "mihomo 已停止")
+		}
 		return nil
 	}
 
 	_ = cmd.Process.Signal(syscall.SIGTERM)
-	done := make(chan struct{})
-	go func() {
-		for i := 0; i < 60; i++ {
-			if !e.Running() {
-				close(done)
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(7 * time.Second):
-	}
-	if e.Running() {
+	if !waitClosed(done, 7*time.Second) {
 		_ = cmd.Process.Kill()
-		time.Sleep(500 * time.Millisecond)
+		waitClosed(done, 2*time.Second)
 	}
 	e.app.addLog("info", "mihomo 已停止")
 	return nil
 }
 
+func waitClosed(ch <-chan struct{}, d time.Duration) bool {
+	if ch == nil {
+		return true
+	}
+	select {
+	case <-ch:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
 // Restart 重启内核。
 func (e *Engine) Restart() error {
-	// Restart 是「内部重启」，不能改变用户意图：Stop 会清掉 enabled 标记，
-	// 一旦随后的 Start 失败（配置异常/内核起不来），标记就没了，
-	// 面板重启和看门狗都不会再拉起它 —— 表现为「插件不知道什么时候自己停了」。
+	e.life.Lock()
+	defer e.life.Unlock()
+
+	// Restart 是「内部重启」，不能改变用户意图：保留 enabled 标记，
+	// 否则 Start 一旦失败（配置异常/内核起不来）就不会再被看门狗拉起。
 	wanted := engineWanted(e.app.dataDir)
-	if err := e.Stop(); err != nil {
-		if wanted {
-			setEngineWanted(e.app.dataDir, true)
-		}
+	if err := e.stopLocked(true); err != nil {
 		return err
 	}
 	time.Sleep(500 * time.Millisecond)
-	if err := e.Start(); err != nil {
+	if err := e.startLocked(); err != nil {
 		if wanted {
-			setEngineWanted(e.app.dataDir, true) // 保持期望状态，交给看门狗继续重试
 			e.app.addLog("error", "内核重启失败，已保留运行意图，稍后自动重试："+err.Error())
 		}
 		return err
@@ -328,6 +377,7 @@ func (e *Engine) Reload() error {
 	if err := e.ApplyIptables(); err != nil {
 		e.app.addLog("warning", "重载后刷新转发规则失败："+err.Error())
 	}
+	e.app.invalidateCoreCache()
 	e.app.addLog("info", "配置已热重载")
 	return nil
 }
@@ -574,10 +624,14 @@ func (a *App) checkScheduledRestart(now time.Time) {
 	}
 }
 
+// restartEngine 是定时重启的注入点，测试可替换为桩函数，
+// 避免为了验证调度逻辑去启动真实内核。
+var restartEngine = func(e *Engine) error { return e.Restart() }
+
 // performScheduledRestart 执行一次定时重启并落盘进度；失败只记日志，不 panic。
 func (a *App) performScheduledRestart(reason, dailyDate string) {
 	a.addLog("info", "定时重启内核："+reason)
-	err := a.engine.Restart()
+	err := restartEngine(a.engine)
 
 	a.restartMu.Lock()
 	if dailyDate != "" {
@@ -699,6 +753,17 @@ func (e *Engine) proxyServerIPs() []string {
 
 // ApplyIptables 建立 nat 表转发链，将 LAN 的 TCP 流量重定向到 redir 端口。
 func (e *Engine) ApplyIptables() error {
+	e.iptMu.Lock()
+	defer e.iptMu.Unlock()
+
+	// 拿锁后再检查：避免看门狗在 Stop 清理后又把规则加回来。
+	e.mu.Lock()
+	running := e.running
+	e.mu.Unlock()
+	if !running {
+		return nil
+	}
+
 	if os.Getenv("MM_NO_IPTABLES") == "1" {
 		e.mu.Lock()
 		e.applied = true
@@ -785,6 +850,9 @@ func (e *Engine) ApplyIptables() error {
 
 // ClearIptables 移除全部本插件规则。
 func (e *Engine) ClearIptables() error {
+	e.iptMu.Lock()
+	defer e.iptMu.Unlock()
+
 	if os.Getenv("MM_NO_IPTABLES") == "1" {
 		e.mu.Lock()
 		e.applied = false

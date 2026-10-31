@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // 未启动内核时也要能看节点：直接从订阅的节点文件里读名字与类型。
@@ -102,12 +104,49 @@ func loadProviderProxies(path string) []previewProxy {
 //	🚀 节点选择（含 ♻️ 自动选择、各订阅分组、DIRECT）
 //	♻️ 自动选择（所有节点）
 //	📦 订阅名（该订阅的节点）
+//
+// previewGroups 带缓存：节点页在未启动内核时也会轮询，每次重新解析所有
+// provider 文件在几百个节点时明显浪费。订阅信息或文件 mtime/size 变化才重建。
 func (a *App) previewGroups() []groupDTO {
 	a.mu.RLock()
 	subs := make([]Sub, len(a.subs))
 	copy(subs, a.subs)
 	a.mu.RUnlock()
 
+	sig := a.previewSignature(subs)
+	a.previewMu.Lock()
+	if a.previewReady && a.previewSig == sig && time.Since(a.previewAt) < 30*time.Second {
+		out := a.previewData
+		a.previewMu.Unlock()
+		return out
+	}
+	a.previewMu.Unlock()
+
+	groups := a.buildPreviewGroups(subs)
+
+	a.previewMu.Lock()
+	a.previewReady = true
+	a.previewSig = sig
+	a.previewAt = time.Now()
+	a.previewData = groups
+	a.previewMu.Unlock()
+	return groups
+}
+
+func (a *App) previewSignature(subs []Sub) string {
+	var b strings.Builder
+	for _, s := range subs {
+		size, mtime := int64(-1), int64(-1)
+		if fi, err := os.Stat(a.providerPath(s.ID)); err == nil {
+			size = fi.Size()
+			mtime = fi.ModTime().UnixNano()
+		}
+		fmt.Fprintf(&b, "%s|%s|%t|%d|%d|%d;", s.ID, s.Name, s.Enabled, s.UpdatedAt, size, mtime)
+	}
+	return b.String()
+}
+
+func (a *App) buildPreviewGroups(subs []Sub) []groupDTO {
 	type subView struct {
 		group string
 		nodes []nodeDTO

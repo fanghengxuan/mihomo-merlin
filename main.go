@@ -50,6 +50,23 @@ type App struct {
 	logRing   *ringBuffer
 	iptablesE string
 
+	// 内核状态缓存：避免 /api/status 每 3 秒都去请求 /version 与 /configs。
+	coreMu        sync.Mutex
+	coreVersion   string
+	coreVersionAt time.Time
+	coreCfg       *CoreConfig
+	coreCfgAt     time.Time
+	memAt         time.Time
+	memPID        int
+	memMB         float64
+
+	// 未启动内核时的节点预览缓存（按订阅与 provider 文件签名失效）。
+	previewMu    sync.Mutex
+	previewReady bool
+	previewSig   string
+	previewAt    time.Time
+	previewData  []groupDTO
+
 	// IP 质量探测缓存（120 秒）
 	ipqMu   sync.Mutex
 	ipqAt   time.Time
@@ -111,9 +128,9 @@ func main() {
 
 	app.samples.Start()
 	app.hub.Start()
-	safeGo("rule-scheduler", app.ruleScheduler)
-	safeGo("restart-scheduler", app.restartScheduler)
-	safeGo("storage-janitor", app.storageJanitor)
+	safeLoop("rule-scheduler", app.ruleScheduler)
+	safeLoop("restart-scheduler", app.restartScheduler)
+	safeLoop("storage-janitor", app.storageJanitor)
 	app.CleanupStorage()
 
 	mux := http.NewServeMux()
@@ -138,6 +155,11 @@ func main() {
 		Addr:              *listen,
 		Handler:           app.withAuth(mux),
 		ReadHeaderTimeout: 10 * time.Second,
+		// 96MB 内核上传在慢速内网下可能需要很久，给足 10 分钟。
+		ReadTimeout:    10 * time.Minute,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+		// 不设置全局 WriteTimeout：SSE 是长连接，会被误杀。
 	}
 
 	go func() {
@@ -155,28 +177,92 @@ func main() {
 	_ = app.engine.ClearIptables()
 }
 
-// safeGo 跑一个后台任务；panic 时记录堆栈但不让面板退出。
+// safeGo 跑一个一次性后台任务；panic 时记录堆栈但不让面板退出。
 // 之前这些任务没有 recover，一个 panic 就会让整个面板消失（表现为 9380 直接连不上）。
 func safeGo(name string, fn func()) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				buf := make([]byte, 1<<16)
-				n := runtime.Stack(buf, false)
-				msg := fmt.Sprintf("[%s] panic: %v\n%s", name, r, string(buf[:n]))
-				log.Printf("%s", msg)
-				if path := panicLogPath(); path != "" {
-					_ = os.MkdirAll(filepath.Dir(path), 0o755)
-					f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-					if err == nil {
-						fmt.Fprintf(f, "==== %s ====\n%s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
-						_ = f.Close()
-					}
-				}
-			}
-		}()
-		fn()
+	go runGuarded(name, fn)
+}
+
+// runGuarded 执行 fn 并吞掉 panic，返回是否发生过 panic。
+func runGuarded(name string, fn func()) (panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+			logPanic(name, r)
+		}
 	}()
+	fn()
+	return false
+}
+
+func logPanic(name string, r any) {
+	buf := make([]byte, 1<<16)
+	n := runtime.Stack(buf, false)
+	msg := fmt.Sprintf("[%s] panic: %v\n%s", name, r, string(buf[:n]))
+	log.Printf("%s", msg)
+	if path := panicLogPath(); path != "" {
+		_ = os.MkdirAll(filepath.Dir(path), 0o755)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err == nil {
+			fmt.Fprintf(f, "==== %s ====\n%s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
+			_ = f.Close()
+		}
+	}
+}
+
+// loopBackoffs 是常驻循环 panic/意外退出后的重启退避。
+// 定位为变量便于测试缩短等待，生产路径不修改。
+var loopBackoffs = []time.Duration{
+	time.Second, 2 * time.Second, 5 * time.Second, 30 * time.Second, 60 * time.Second,
+}
+
+// safeLoop 跑一个常驻后台循环。循环 panic 或意外返回后按退避重启，
+// 避免一个临时错误让流量/日志/调度任务永久停摆。
+func safeLoop(name string, fn func()) {
+	go safeLoopWithStop(name, fn, nil)
+}
+
+// safeLoopWithStop 与 safeLoop 相同，但可在测试中用 stop 结束重启循环。
+func safeLoopWithStop(name string, fn func(), stop <-chan struct{}) {
+	idx := 0
+	for {
+		started := time.Now()
+		runGuarded(name, fn)
+
+		if stop != nil {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+		}
+
+		// 长时间正常运行后退避复位，避免偶发 panic 后等 60 秒才恢复。
+		if time.Since(started) >= 5*time.Minute {
+			idx = 0
+		}
+		delay := time.Second
+		if len(loopBackoffs) > 0 {
+			if idx < len(loopBackoffs) {
+				delay = loopBackoffs[idx]
+			} else {
+				delay = loopBackoffs[len(loopBackoffs)-1]
+			}
+		}
+
+		if stop == nil {
+			time.Sleep(delay)
+		} else {
+			t := time.NewTimer(delay)
+			select {
+			case <-stop:
+				t.Stop()
+				return
+			case <-t.C:
+			}
+		}
+		idx++
+	}
 }
 
 var panicLogDir = ""
