@@ -31,6 +31,13 @@ type Engine struct {
 
 	watchOnce sync.Once
 	stopWatch chan struct{}
+
+	// 自动恢复（内核意外退出后拉起）
+	recoverMu       sync.Mutex
+	recoverAttempts int
+	recoverNextAt   time.Time
+	recoverLastErr  string
+	recoverState    recoveryState
 }
 
 func NewEngine(app *App) *Engine {
@@ -258,11 +265,25 @@ func (e *Engine) Stop() error {
 
 // Restart 重启内核。
 func (e *Engine) Restart() error {
+	// Restart 是「内部重启」，不能改变用户意图：Stop 会清掉 enabled 标记，
+	// 一旦随后的 Start 失败（配置异常/内核起不来），标记就没了，
+	// 面板重启和看门狗都不会再拉起它 —— 表现为「插件不知道什么时候自己停了」。
+	wanted := engineWanted(e.app.dataDir)
 	if err := e.Stop(); err != nil {
+		if wanted {
+			setEngineWanted(e.app.dataDir, true)
+		}
 		return err
 	}
 	time.Sleep(500 * time.Millisecond)
-	return e.Start()
+	if err := e.Start(); err != nil {
+		if wanted {
+			setEngineWanted(e.app.dataDir, true) // 保持期望状态，交给看门狗继续重试
+			e.app.addLog("error", "内核重启失败，已保留运行意图，稍后自动重试："+err.Error())
+		}
+		return err
+	}
+	return nil
 }
 
 // Reload 重新生成配置并热重载；失败时退回重启。
@@ -284,6 +305,73 @@ func (e *Engine) Reload() error {
 	return nil
 }
 
+// recoverBackoff 是自动恢复的退避序列（第 N 次失败后等多久再试）。
+var recoverBackoff = []time.Duration{
+	time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 30 * time.Minute,
+}
+
+// recoveryState 记录自动恢复的尝试情况，供状态接口与界面展示。
+type recoveryState struct {
+	Attempts  int    `json:"attempts"`
+	LastErr   string `json:"lastErr"`
+	NextAt    int64  `json:"nextAt"`
+	Recovered int64  `json:"recovered"`
+}
+
+// maybeAutoRecover 在内核本该运行却不在运行时尝试拉起（带退避）。
+func (e *Engine) maybeAutoRecover(now time.Time) {
+	if e.Running() {
+		return
+	}
+	if !engineWanted(e.app.dataDir) {
+		return // 用户主动停止过
+	}
+	e.app.mu.RLock()
+	autoStart := e.app.settings.AutoStart
+	e.app.mu.RUnlock()
+	if !autoStart {
+		return // 明确关了开机自启，交给用户手动处理
+	}
+
+	e.recoverMu.Lock()
+	if now.Before(e.recoverNextAt) {
+		e.recoverMu.Unlock()
+		return
+	}
+	e.recoverAttempts++
+	attempt := e.recoverAttempts
+	e.recoverMu.Unlock()
+
+	e.app.addLog("warning", fmt.Sprintf("检测到内核未运行，尝试自动恢复（第 %d 次）", attempt))
+	err := e.Start()
+
+	e.recoverMu.Lock()
+	if err != nil {
+		e.recoverLastErr = err.Error()
+		idx := attempt - 1
+		if idx >= len(recoverBackoff) {
+			idx = len(recoverBackoff) - 1
+		}
+		e.recoverNextAt = now.Add(recoverBackoff[idx])
+		e.recoverState = recoveryState{Attempts: attempt, LastErr: e.recoverLastErr, NextAt: e.recoverNextAt.Unix()}
+		e.recoverMu.Unlock()
+		e.app.addLog("error", "自动恢复失败："+err.Error())
+		return
+	}
+	e.recoverAttempts = 0
+	e.recoverNextAt = time.Time{}
+	e.recoverState = recoveryState{Attempts: 0, Recovered: now.Unix()}
+	e.recoverMu.Unlock()
+	e.app.addLog("info", "内核已自动恢复运行")
+}
+
+// RecoverState 返回自动恢复的可展示状态。
+func (e *Engine) RecoverState() recoveryState {
+	e.recoverMu.Lock()
+	defer e.recoverMu.Unlock()
+	return e.recoverState
+}
+
 func (e *Engine) startWatchdog() {
 	e.watchOnce.Do(func() {
 		go func() {
@@ -301,6 +389,10 @@ func (e *Engine) startWatchdog() {
 							e.app.addLog("info", "转发规则已被重置，已自动恢复")
 						}
 					}
+					// 内核意外退出（崩溃 / 定时重启失败 / 被 OOM 杀掉）时自动拉起：
+					// 只有当「用户希望它运行」（enabled 标记存在）且开启了开机自启才动作，
+					// 手动点过停止的不会被复活。
+					e.maybeAutoRecover(time.Now())
 				}
 			}
 		}()

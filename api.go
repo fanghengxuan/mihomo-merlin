@@ -96,6 +96,12 @@ func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"running":       a.engine.Running(),
 		"lastRestartAt": a.lastRestart(),
 		"nextRestartAt": a.nextRestartAt(time.Now()),
+		// 用户是否期望它运行（enabled 标记）：用于解释「为什么没在跑 / 会不会自动拉起」
+		"wanted":       engineWanted(a.dataDir),
+		"autoRecover":  a.engine.RecoverState(),
+		"autoRestart":  s.AutoRestart,
+		"restartEvery": s.RestartEveryHours,
+		"restartAt":    s.RestartAt,
 	}
 	if a.engine.Running() {
 		ver, _ := a.clash.Version()

@@ -240,9 +240,18 @@ function renderStatus(st) {
   statusChip($('#setEnginePill'), running);
 
   $('#heroState').textContent = running ? '已连接' : '未连接';
-  $('#heroSub').textContent = running
-    ? `mihomo ${eng.version || ''} · 已运行 ${fmtDur(eng.uptime)}`
-    : '内核未启动，点右侧按钮开始代理';
+  const rec = eng.autoRecover || {};
+  if (running) {
+    const recoveredAt = rec.recovered ? ' · 自动恢复于 ' + hhmmss(new Date(rec.recovered * 1000)) : '';
+    $('#heroSub').textContent = `mihomo ${eng.version || ''} · 已运行 ${fmtDur(eng.uptime)}${recoveredAt}`;
+  } else if (eng.wanted && rec.attempts > 0) {
+    const next = rec.nextAt ? '，下次重试 ' + hhmmss(new Date(rec.nextAt * 1000)) : '';
+    $('#heroSub').textContent = `内核已停止，正在自动恢复（第 ${rec.attempts} 次${next}）`;
+  } else if (eng.wanted) {
+    $('#heroSub').textContent = '内核已停止，看门狗会在一分钟内自动拉起';
+  } else {
+    $('#heroSub').textContent = '内核未启动，点右侧按钮开始代理';
+  }
 
   $('#btnPowerRing').classList.toggle('on', running);
   const ringLabel = $('#ringLabel');
@@ -974,8 +983,8 @@ const CONN_MAX_ROWS = 200;
 
 let connTimer = null;
 
-function hhmmss() {
-  const d = new Date();
+function hhmmss(at) {
+  const d = at instanceof Date ? at : new Date();
   const p = (x) => String(x).padStart(2, '0');
   return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
