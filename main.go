@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const panelVersion = "1.7.5"
+const panelVersion = "1.7.6"
 
 // panelPort 管理面板监听端口（插件安装脚本与 ASP 都按此端口访问）
 const panelPort = 9380

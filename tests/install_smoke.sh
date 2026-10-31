@@ -67,6 +67,14 @@ echo "iptables \$*" >> "$ROOT/iptables.log"
 exit 0
 EOF
 
+# df：模拟 jffs 剩余空间（默认 17548KB，和只有 17MB 的机型一致）
+cat > "$STUB/df" <<EOF
+#!/bin/sh
+echo "Filesystem 1024-blocks Used Available Capacity Mounted on"
+echo "/dev/mtdblock 65536 0 \${MM_FAKE_FREE_KB:-17548} 1% /jffs"
+EOF
+chmod +x "$STUB/df"
+
 # killall：macOS 没有该命令（BusyBox 有），给个桩避免卸载脚本报错
 cat > "$STUB/killall" <<'EOF'
 #!/bin/sh
@@ -132,7 +140,7 @@ done
 # ---------- 跑安装 ----------
 echo "=== 安装 ==="
 cp -f "$STUB"/* "$KS/bin/" 2>/dev/null || true
-run_sh "$ROOT/pkg/mihomo/install.sh" > "$ROOT/install.log" 2>&1 || {
+MM_PAYLOAD_KB=14644 run_sh "$ROOT/pkg/mihomo/install.sh" > "$ROOT/install.log" 2>&1 || {
 	if false; then :; fi
 }
 # 桩环境里最后的「面板是否启动」可能失败，但文件必须落齐；这里只做断言
@@ -187,9 +195,24 @@ done
 grep -q 'softcenter_module_mihomo_install=1' "$ROOT/dbus.log" || fail "install 标记不是 1（MerlinClash Lite 在 388 上用 1）"
 ok "软件中心菜单登记完整（name/title/description/version/install=1）"
 
+grep -q "剩余空间：17548KB" "$ROOT/install.log" || fail "安装脚本应打印剩余空间"
+grep -q "本包需要 15668KB" "$ROOT/install.log" || fail "安装脚本应按实际大小报告需要的空间（14644+1024）"
+ok "空间检查按实际大小：$(grep -o '剩余空间：[^】]*' "$ROOT/install.log" | head -1)"
+
 [ "$(cat "$KS/mihomo/version" 2>/dev/null | tr -d '\n')" = "$(cat "$PROJ/plugin/version" | tr -d '\n')" ] \
 	|| fail "版本号未写入数据目录"
 ok "版本号已写入：$(cat "$KS/mihomo/version")"
+
+# ---------- 空间不足时应拒绝安装（用另一份拷贝，避免影响主流程） ----------
+echo
+echo "=== 空间不足场景 ==="
+ROOT2="$ROOT/pkg2"
+cp -R "$ROOT/pkg" "$ROOT2"
+MM_FAKE_FREE_KB=5000 MM_PAYLOAD_KB=14644 run_sh "$ROOT2/mihomo/install.sh" > "$ROOT/install-low.log" 2>&1 && fail "空间不足时不该安装成功"
+grep -q "剩余空间不足" "$ROOT/install-low.log" || fail "空间不足时缺少明确提示"
+grep -q "本包需要" "$ROOT/install-low.log" || fail "空间不足提示应说明需要多少"
+ok "空间不足时明确拒绝：$(grep -o '剩余空间不足[^】]*' "$ROOT/install-low.log" | head -1)"
+rm -rf "$ROOT2"
 
 # ---------- 跑卸载 ----------
 echo

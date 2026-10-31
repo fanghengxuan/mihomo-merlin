@@ -68,12 +68,18 @@ case "$KERN" in
 	*) mm_log "提示：内核 ${KERN} 未经验证，安装后会继续，如异常请反馈日志" ;;
 esac
 
-# 磁盘空间检查（/jffs 或 /koolshare 所在分区）
+# 磁盘空间检查：按「本包实际解压大小」判断，而不是写死 20MB
+# （写死 20MB 会把 jffs 只有 17MB 级别的机型全部拦掉，连精简包也装不上）
+# MM_PAYLOAD_KB 仅供测试注入（冒烟测试里二进制被换成桩，du 量不出来）
+PAYLOAD_KB=${MM_PAYLOAD_KB:-$(du -sk "$DIR" 2>/dev/null | awk '{print $1}')}
+[ -n "$PAYLOAD_KB" ] || PAYLOAD_KB=0
+NEED_KB=$(( PAYLOAD_KB + 1024 ))   # 留 1MB 余量给配置/日志
+[ "$NEED_KB" -ge 2048 ] || NEED_KB=2048
 FREE_KB=$(df -k /koolshare 2>/dev/null | awk 'NR==2 {print $4}')
-if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 20480 ] 2>/dev/null; then
-	fail "剩余空间不足 20MB（当前 ${FREE_KB}KB），请先清理 /jffs 或 /koolshare"
+if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt "$NEED_KB" ] 2>/dev/null; then
+	fail "剩余空间不足：本包需要 ${NEED_KB}KB（约 $((NEED_KB / 1024))MB），当前仅 ${FREE_KB}KB。请清理 /jffs 后重试，或改用 lite 包"
 fi
-mm_log "剩余空间：${FREE_KB:-未知}KB"
+mm_log "剩余空间：${FREE_KB:-未知}KB（本包需要 ${NEED_KB}KB）"
 
 # 停止旧版本
 if [ -x /koolshare/scripts/mihomo_ctl.sh ]; then
