@@ -7,7 +7,7 @@
 **给华硕梅林（koolshare 软件中心）路由器用的 mihomo 代理插件**：内核用 [mihomo](https://github.com/MetaCubeX/mihomo)，
 自带一个 FlClash 风格的 Web 面板，打包成软件中心可直接离线安装的 `tar.gz`。
 
-> 在 **TUF-AX3000 / axhnd.675x（armv7，内核 4.1）** + `3.0.0.4.388_25525_koolshare` 上实测通过（v2.0.0）。
+> 在 **TUF-AX3000 / axhnd.675x（armv7，内核 4.1）** + `3.0.0.4.388_25525_koolshare` 上实测通过（v2.0.0；2.0.1 为增量修复）。
 > 同代 axhnd 机型（RT-AX58U / RT-AX3000 / RT-AX56U 等）通常同样适用。
 
 **能力**：订阅管理（链接 / 粘贴导入 / 正则过滤）· 节点分组与测速 · 规则 / 全局 / 直连三种模式 ·
@@ -20,7 +20,7 @@
 
 ![设置](docs/screenshot-settings.png)
 
-> v2.0.0 实际界面（1440×900，深色）。支持浅色 / 深色 / 跟随系统 / 纯黑，6 套主色；
+> v2 实际界面（1440×900，深色）。支持浅色 / 深色 / 跟随系统 / 纯黑，6 套主色；
 > 手机访问同一地址会自动切换为 5 项底部 dock + 推入式子页。
 
 ## 快速开始
@@ -368,4 +368,4 @@ MM_DATA_DIR=/tmp/mmdata MM_MIHOMO=$(command -v mihomo) MM_NO_IPTABLES=1 \
 
 ## 更新记录
 
-见 [CHANGELOG.md](CHANGELOG.md)。当前版本 **2.0.0**：面板重构 + 稳定性修复。
+见 [CHANGELOG.md](CHANGELOG.md)。当前版本 **2.0.1**：面板重构 + 稳定性与 Merlin 安装修复。

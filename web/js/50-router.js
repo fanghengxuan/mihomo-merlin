@@ -191,7 +191,7 @@
     var dot = MM.$('#railDot'), label = MM.$('#railState'), ver = MM.$('#railVersion');
     if (dot) dot.className = 'dot' + (running ? ' on' : '');
     if (label) label.textContent = running ? '运行中' : '未运行';
-    if (ver) ver.textContent = 'v' + ((st && st.status && st.status.panel && st.status.panel.version) || '2.0.0');
+    if (ver) ver.textContent = 'v' + ((st && st.status && st.status.panel && st.status.panel.version) || '2.0.1');
   }
 
   function apply() {

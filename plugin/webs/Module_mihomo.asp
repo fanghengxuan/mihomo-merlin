@@ -8,7 +8,7 @@ var PKG_NAME = "mihomo";
 var PKG_ARCH = "hnd";     /* axhnd.675x / armv7l，内核 4.1 */
 var PKG_TYPE = "full";
 var PKG_EXTA = "";
-var PKG_VERSION = "2.0.0";
+var PKG_VERSION = "2.0.1";
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mihomo 魔方</title>

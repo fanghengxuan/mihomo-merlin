@@ -1,6 +1,6 @@
 # 更新记录
 
-## 未发布
+## 2.0.1（2026-11-01）
 
 - 新增 **Asuswrt-Merlin（gnuton 等，无软件中心）原生安装器**：
   `plugin/merlin/`、`tools/build-merlin-package.sh`、`tests/merlin_install_smoke.sh`
