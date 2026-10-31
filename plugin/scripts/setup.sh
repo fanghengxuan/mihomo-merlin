@@ -84,8 +84,31 @@ killall -q -9 mihomo 2>/dev/null
 mkdir -p /koolshare/bin
 
 mm_log "复制 mihomo 内核与面板程序，请稍候"
-install_file "${DIR}/bin/mihomo" /koolshare/bin/mihomo || fail "复制 mihomo 失败（目标文件可能被占用或只读）"
-install_file "${DIR}/bin/mihomo-panel" /koolshare/bin/mihomo-panel || fail "复制面板失败（目标文件可能被占用或只读）"
+
+# 先把旧二进制挪到 RAM(/tmp)，立刻腾出 jffs 空间：
+# jffs2 在剩余空间碎片化时，即使 df 显示还有十几 MB，写入大文件也可能报
+# "No space left on device"。挪走旧文件后峰值只需一份新文件的大小。
+OLD_BACKUP=""
+for f in mihomo mihomo-panel; do
+	if [ -e "/koolshare/bin/$f" ]; then
+		if mv -f "/koolshare/bin/$f" "/tmp/.mm-old-$f.$$" 2>/dev/null; then
+			OLD_BACKUP="$OLD_BACKUP $f"
+		else
+			rm -f "/koolshare/bin/$f" 2>/dev/null
+		fi
+	fi
+done
+[ -n "$OLD_BACKUP" ] && mm_log "已把旧程序搬到 /tmp 暂存（安装完成后删除）：$OLD_BACKUP"
+
+FREE_NOW=$(df -k /koolshare 2>/dev/null | awk 'NR==2 {print $4}')
+mm_log "安装前 jffs 剩余：${FREE_NOW:-未知}KB"
+restore_old() {
+	for f in $OLD_BACKUP; do
+		[ -e "/tmp/.mm-old-$f.$$" ] && mv -f "/tmp/.mm-old-$f.$$" "/koolshare/bin/$f" 2>/dev/null
+	done
+}
+install_file "${DIR}/bin/mihomo" /koolshare/bin/mihomo || { restore_old; fail "复制 mihomo 失败（jffs 空间不足或文件被占用）"; }
+install_file "${DIR}/bin/mihomo-panel" /koolshare/bin/mihomo-panel || { restore_old; fail "复制面板失败（jffs 空间不足或文件被占用）"; }
 chmod 755 /koolshare/bin/mihomo /koolshare/bin/mihomo-panel 2>/dev/null
 
 # 内核自检：架构不对 / 文件损坏时立刻中止，避免装完变砖
@@ -97,6 +120,8 @@ fi
 mm_log "  内核：$(head -1 /tmp/mihomo_kver)"
 PANEL_VER=$(/koolshare/bin/mihomo-panel -v 2>&1 | head -1)
 [ -n "$PANEL_VER" ] || fail "面板程序自检失败"
+# 自检通过后再清掉 /tmp 里的旧程序备份（失败时会自动挪回）
+for f in $OLD_BACKUP; do rm -f "/tmp/.mm-old-$f.$$" 2>/dev/null; done
 mm_log "  ${PANEL_VER}"
 
 mm_log "安装国内 IP 规则文件"
