@@ -619,6 +619,14 @@ func (e *Engine) ApplyIptables() error {
 		}
 	}
 
+	// TCP MSS 钳制：内核转发的 SYN 统一把 MSS 压到路径 MTU，
+	// 否则客户端仍按 1500 发大包，遇到 MTU 更小的代理出口时会出现「下载正常、上传到几 MB 就卡死/重置」。
+	if err := e.ipt("-t", "mangle", "-C", "FORWARD", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+		"-j", "TCPMSS", "--clamp-mss-to-pmtu"); err != nil {
+		_ = e.ipt("-t", "mangle", "-A", "FORWARD", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+			"-j", "TCPMSS", "--clamp-mss-to-pmtu")
+	}
+
 	// 阻断 QUIC，迫使浏览器/App 回落到 TCP（否则 UDP 会绕过 redir）
 	if s.BlockQuic {
 		if err := e.ipt("-C", "FORWARD", "-p", "udp", "--dport", "443", "-j", "REJECT"); err != nil {
@@ -684,6 +692,12 @@ func (e *Engine) ClearIptables() error {
 	_ = e.ipt("-t", "nat", "-F", "MIHOMO_OUT")
 	_ = e.ipt("-t", "nat", "-X", "MIHOMO_OUT")
 	_ = e.ipt("-D", "FORWARD", "-p", "udp", "--dport", "443", "-j", "REJECT")
+	for i := 0; i < 3; i++ {
+		if err := e.ipt("-t", "mangle", "-D", "FORWARD", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+			"-j", "TCPMSS", "--clamp-mss-to-pmtu"); err != nil {
+			break
+		}
+	}
 
 	e.mu.Lock()
 	e.applied = false
