@@ -6,6 +6,10 @@
 #   ./build.sh --kernel /path/to/mihomo   # 用自己提供的内核（例如 UPX 精简版）
 #   ./build.sh --no-download          # 只用本地缓存的内核与规则
 #   ./build.sh --dev                  # 额外编译一个本机（darwin/arm64）可跑的 panel，便于本地调试
+#   PANEL_UPX=1 ./build.sh            # 面板二进制用 UPX 压缩（jffs 紧张时用，解压后内存约 7MB）
+#
+# 面板用 Go 1.23 构建（go.mod 就是 1.23）：新版工具链会把二进制做大约 1.4MB，
+# 而软件中心要求 jffs 留 2MB 余量，容易导致「空间不足」装不上。
 #
 # 依赖：go（1.21+）、curl、tar、gzip
 
@@ -77,6 +81,16 @@ build_panel() {
 	echo ">>> 交叉编译面板 (linux/arm GOARM=7)"
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
 		"$GO" build -trimpath -ldflags "-s -w" -o "$CACHE/mihomo-panel-linux-armv7" .
+		if [ "${PANEL_UPX:-0}" = "1" ] && command -v upx >/dev/null 2>&1; then
+			cp -f "$CACHE/mihomo-panel-linux-armv7" "$CACHE/mihomo-panel-linux-armv7.upx"
+			if upx --best --lzma "$CACHE/mihomo-panel-linux-armv7.upx" >/dev/null 2>&1; then
+				mv "$CACHE/mihomo-panel-linux-armv7.upx" "$CACHE/mihomo-panel-linux-armv7"
+				echo ">>> 面板已用 UPX 压缩（启动时占用更多内存）"
+			else
+				rm -f "$CACHE/mihomo-panel-linux-armv7.upx"
+				echo ">>> UPX 压缩失败，使用未压缩面板"
+			fi
+		fi
 	if command -v file >/dev/null 2>&1; then
 		file "$CACHE/mihomo-panel-linux-armv7"
 	fi
@@ -115,6 +129,12 @@ pack() {
 	ls -lh "$DIST/$PKG.tar.gz"
 	cat "$DIST/$PKG.tar.gz.sha256"
 	echo "包内内核：$(wc -c < "$STAGE/mihomo/bin/mihomo") 字节  面板：$(wc -c < "$STAGE/mihomo/bin/mihomo-panel") 字节"
+	UNPACK_KB=$(du -sk "$STAGE" 2>/dev/null | awk '{print $1}')
+	NEED_KB=$(( UNPACK_KB + 2048 ))
+	echo "解压后占用： ${UNPACK_KB} KB（软件中心需 jffs ≥ ${NEED_KB} KB，含 2MB 预留）"
+	if [ "$NEED_KB" -gt 17000 ]; then
+		echo "!!! 提示：解压后偏大，18MB 级别的 jffs 可能装不下，可试 PANEL_UPX=1 重新打包"
+	fi
 	echo "安装：软件中心 → 离线安装 → 选择上面的 tar.gz"
 	echo "===================================================="
 }
