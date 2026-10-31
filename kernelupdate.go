@@ -123,6 +123,11 @@ func fetchCandidates(rawURL string) []string {
 // getWithFallback 取一个 URL 的内容；直连失败就换镜像，最后再试「经本机代理」。
 // 返回值带上实际成功的地址，方便日志与排查。
 func (a *App) getWithFallback(rawURL string, maxBytes int64, timeout time.Duration) ([]byte, string, error) {
+	return a.getWithFallbackProgress(rawURL, maxBytes, timeout, nil)
+}
+
+// getWithFallbackProgress 同上，但把下载字节数回调出去（用于进度条）。
+func (a *App) getWithFallbackProgress(rawURL string, maxBytes int64, timeout time.Duration, onProgress func(read, total int64)) ([]byte, string, error) {
 	var lastErr error
 	try := func(u string, viaProxy bool) ([]byte, error) {
 		client := a.newHTTPClient(viaProxy, false)
@@ -140,7 +145,33 @@ func (a *App) getWithFallback(rawURL string, maxBytes int64, timeout time.Durati
 		if resp.StatusCode != 200 {
 			return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 		}
-		return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+		total := resp.ContentLength
+		if onProgress == nil {
+			return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+		}
+		buf := make([]byte, 0, 1<<20)
+		chunk := make([]byte, 64<<10)
+		var read int64
+		for {
+			n, err := resp.Body.Read(chunk)
+			if n > 0 {
+				read += int64(n)
+				if read > maxBytes {
+					return nil, fmt.Errorf("内容超过上限")
+				}
+				buf = append(buf, chunk[:n]...)
+				onProgress(read, total)
+			}
+			if err != nil {
+				if err == io.EOF {
+					return buf, nil
+				}
+				if len(buf) > 0 {
+					return buf, nil
+				}
+				return nil, err
+			}
+		}
 	}
 
 	for _, u := range fetchCandidates(rawURL) {
@@ -269,7 +300,21 @@ func (a *App) handleKernelUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw, usedURL, derr := a.getWithFallback(downloadURL, maxKernelFetch, 3*time.Minute)
+	a.progPct("kernel", assetName, "download", "开始下载内核…", 0, false, false)
+	lastPct := -1
+	raw, usedURL, derr := a.getWithFallbackProgress(downloadURL, maxKernelFetch, 3*time.Minute,
+		func(read, total int64) {
+			pct := 0
+			if total > 0 {
+				pct = int(read * 100 / total)
+			}
+			if pct == lastPct || pct%5 != 0 { // 每 5% 报一次，避免刷屏
+				return
+			}
+			lastPct = pct
+			a.progPct("kernel", assetName, "download",
+				fmt.Sprintf("已下载 %s / %s", humanBytes(read), humanBytes(total)), pct, false, false)
+		})
 	if derr != nil || len(raw) == 0 {
 		if derr == nil {
 			derr = fmt.Errorf("下载内容为空")
@@ -280,12 +325,14 @@ func (a *App) handleKernelUpdate(w http.ResponseWriter, r *http.Request) {
 	if usedURL != downloadURL {
 		a.addLog("info", "内核经备用地址下载："+usedURL)
 	}
+	a.progPct("kernel", assetName, "verify", "下载完成，校验内核…", 92, false, false)
 	payload, wasGz, err := maybeGunzip(raw)
 	if err != nil {
 		writeErr(w, 502, "下载的内容不是有效内核："+err.Error())
 		return
 	}
 
+	a.progPct("kernel", assetName, "install", "写入并重启内核…", 96, false, false)
 	res, ierr := a.installKernelBytes(payload, assetName)
 	if ierr != nil {
 		writeErr(w, ierr.code, ierr.msg)

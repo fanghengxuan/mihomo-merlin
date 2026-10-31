@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
 <title>Mihomo 魔方 · 路由面板</title>
-<link rel="stylesheet" href="app.css?v=1.7.11">
+<link rel="stylesheet" href="app.css?v=1.7.13">
 <link rel="icon" type="image/png" href="/icon-256.png">
 <link rel="apple-touch-icon" href="/icon-256.png">
 </head>
@@ -271,6 +271,10 @@
           <div class="muted" id="kProgressText">准备上传…</div>
         </div>
         <div class="notice hidden" id="kResult"></div>
+        <div class="upload-progress hidden" id="kUpdProgress">
+          <div class="bar"><span id="kUpdBar"></span></div>
+          <div class="muted" id="kUpdText">准备下载…</div>
+        </div>
         <div class="kernel-update">
           <div class="row-actions">
             <button class="btn tonal" id="btnKernelCheck"><svg><use href="#i-refresh"/></svg><span>检查更新</span></button>
@@ -572,6 +576,6 @@
 </div>
 
 <div class="snackbar-wrap" id="toasts"></div>
-<script src="app.js?v=1.7.11"></script>
+<script src="app.js?v=1.7.13"></script>
 </body>
 </html>

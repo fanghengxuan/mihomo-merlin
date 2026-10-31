@@ -41,13 +41,14 @@ type Hub struct {
 
 // ProgressEvent 订阅任务的进度事件（拉取/解析/写盘/重载）。
 type ProgressEvent struct {
-	Op   string `json:"op"`   // add | refresh | import | all
-	Sub  string `json:"sub"`  // 订阅名
-	Step string `json:"step"` // start|connect|proxy|download|parse|write|reload|done|error
-	Msg  string `json:"msg"`
-	At   int64  `json:"at"`
-	Done bool   `json:"done"`
-	Err  bool   `json:"err"`
+	Op      string `json:"op"`   // add | refresh | import | all
+	Sub     string `json:"sub"`  // 订阅名
+	Step    string `json:"step"` // start|connect|proxy|download|parse|write|reload|done|error
+	Msg     string `json:"msg"`
+	At      int64  `json:"at"`
+	Done    bool   `json:"done"`
+	Err     bool   `json:"err"`
+	Percent int    `json:"percent"` // 0-100，用于下载进度条
 }
 
 const maxLogLines = 400
@@ -370,6 +371,16 @@ func (h *Hub) SubscribeProgress() (chan ProgressEvent, func()) {
 }
 
 // prog 便捷方法：发进度 + 写进日志页。
+// progPct 带百分比的进度事件（内核下载用）
+func (a *App) progPct(op, sub, step, msg string, pct int, done, errFlag bool) {
+	if a.hub != nil {
+		a.hub.publishProgress(ProgressEvent{
+			Op: op, Sub: sub, Step: step, Msg: msg,
+			At: time.Now().Unix(), Done: done, Err: errFlag, Percent: pct,
+		})
+	}
+}
+
 func (a *App) prog(op, sub, step, msg string, done, errFlag bool) {
 	if a.hub != nil {
 		a.hub.publishProgress(ProgressEvent{

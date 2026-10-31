@@ -1650,6 +1650,24 @@ function appendProgLine(box, ev) {
 }
 
 function progressLine(ev) {
+  // 内核下载/安装进度：显示在内核卡片的进度条上
+  if (ev.op === 'kernel') {
+    const wrap = $('#kUpdProgress');
+    const bar = $('#kUpdBar');
+    const txt = $('#kUpdText');
+    if (wrap) wrap.classList.remove('hidden');
+    if (bar) {
+      const pct = Math.max(0, Math.min(100, Number(ev.percent) || 0));
+      bar.style.width = pct + '%';
+      bar.style.background = ev.err ? 'var(--md-error)' : '';
+    }
+    if (txt) txt.textContent = (ev.msg || '') + (ev.percent ? '（' + ev.percent + '%）' : '');
+    if (ev.done || ev.err) {
+      state.kernelUpdating = false;
+      setTimeout(() => { if (wrap && !state.kernelUpdating) wrap.classList.add('hidden'); }, ev.err ? 6000 : 2500);
+    }
+    return;
+  }
   // 在订阅弹窗里操作时，日志直接展开在弹窗下方
   if (state.inlineProgress && (ev.op === 'add' || ev.op === 'fetch')) {
     appendProgLine($('#subProgLog'), ev);
@@ -1833,6 +1851,13 @@ $('#btnKernelUpdate').addEventListener('click', async (e) => {
   if (!window.confirm('下载并安装内核 ' + info.latest + '？安装过程会重启内核，连接会短暂中断。')) return;
   const btn = e.currentTarget;
   btn.disabled = true;
+  state.kernelUpdating = true;
+  const wrap = $('#kUpdProgress');
+  if (wrap) wrap.classList.remove('hidden');
+  const bar = $('#kUpdBar');
+  if (bar) { bar.style.width = '0%'; bar.style.background = ''; }
+  const upTxt = $('#kUpdText');
+  if (upTxt) upTxt.textContent = '正在下载 ' + info.latest + '…';
   kernelUpdateHint('正在下载并安装 ' + info.latest + '…（约 ' + fmtBytes(info.size) + '）');
   try {
     const r = await api('/api/kernel/update', { method: 'POST' });

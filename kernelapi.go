@@ -274,10 +274,20 @@ func (a *App) installKernelBytes(payload []byte, label string) (*installResult, 
 
 // appReloadDryRun 用指定内核跑一次 `-t` 配置校验。
 func (a *App) appReloadDryRun(kernel string) error {
+	cfgPath := a.configPath()
 	if err := a.WriteConfig(); err != nil {
-		return err
+		// 典型情况：刚装好还没加订阅，生成不出完整配置。
+		// 这时不该拦着不让换内核 —— 用一份最小配置验证「这个内核能跑、认得基本结构」即可。
+		a.addLog("info", "暂无可用于校验的配置（"+err.Error()+"），改用最小配置校验新内核")
+		_ = os.MkdirAll(a.kernelDir(), 0o755)
+		minimal := filepath.Join(a.kernelDir(), "dryrun-minimal.yaml")
+		if werr := os.WriteFile(minimal, []byte("mixed-port: 7890\nmode: rule\nlog-level: info\n"), 0o600); werr != nil {
+			return fmt.Errorf("无法写入临时校验配置：%v", werr)
+		}
+		defer func() { _ = os.Remove(minimal) }()
+		cfgPath = minimal
 	}
-	out, err := run(90*time.Second, kernel, "-t", "-d", a.dataDir, "-f", a.configPath())
+	out, err := run(90*time.Second, kernel, "-t", "-d", a.dataDir, "-f", cfgPath)
 	if err != nil {
 		return fmt.Errorf("%s", tail(out, 500))
 	}
