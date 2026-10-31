@@ -134,17 +134,28 @@ restore_old() {
 		fi
 	done
 }
-install_file "${DIR}/bin/mihomo" /koolshare/bin/mihomo || { restore_old; fail "复制 mihomo 失败（jffs 空间不足或文件被占用）"; }
+HAVE_KERNEL=0
+if [ -f "${DIR}/bin/mihomo" ]; then
+	HAVE_KERNEL=1
+	install_file "${DIR}/bin/mihomo" /koolshare/bin/mihomo || { restore_old; fail "复制 mihomo 失败（jffs 空间不足或文件被占用）"; }
+else
+	mm_log "本安装包不含内核，跳过内核安装（稍后在面板里下载或上传）"
+fi
 install_file "${DIR}/bin/mihomo-panel" /koolshare/bin/mihomo-panel || { restore_old; fail "复制面板失败（jffs 空间不足或文件被占用）"; }
-chmod 755 /koolshare/bin/mihomo /koolshare/bin/mihomo-panel 2>/dev/null
+chmod 755 /koolshare/bin/mihomo-panel 2>/dev/null
+[ -f /koolshare/bin/mihomo ] && chmod 755 /koolshare/bin/mihomo 2>/dev/null
 
 # 内核自检：架构不对 / 文件损坏时立刻中止，避免装完变砖
-if ! /koolshare/bin/mihomo -v >/tmp/mihomo_kver 2>&1; then
-	mm_log "内核无法运行，输出如下："
-	head -5 /tmp/mihomo_kver 2>/dev/null
-	fail "内核自检失败（架构不匹配或文件损坏），安装中止"
+if [ "$HAVE_KERNEL" = "1" ]; then
+	if ! /koolshare/bin/mihomo -v >/tmp/mihomo_kver 2>&1; then
+		mm_log "内核无法运行，输出如下："
+		head -5 /tmp/mihomo_kver 2>/dev/null
+		fail "内核自检失败（架构不匹配或文件损坏），安装中止"
+	fi
+	mm_log "  内核：$(head -1 /tmp/mihomo_kver)"
+else
+	mm_log "提示：打开 http://<路由器IP>:9380 → 设置 → mihomo 内核 → 检查更新（自动下载），或手动上传内核文件"
 fi
-mm_log "  内核：$(head -1 /tmp/mihomo_kver)"
 PANEL_VER=$(/koolshare/bin/mihomo-panel -v 2>&1 | head -1)
 [ -n "$PANEL_VER" ] || fail "面板程序自检失败"
 # 自检通过后再清掉 /tmp 里的旧程序备份（失败时会自动挪回）

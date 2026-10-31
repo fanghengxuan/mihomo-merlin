@@ -101,6 +101,10 @@ sh mihomo-cleanup.sh --yes --need 16692
 |---|---|---|
 | `mihomo_*_armv7.tar.gz` | ≈14.6 MB | ≥16.7 MB |
 | `mihomo_*_armv7_lite.tar.gz`（UPX 面板） | ≈9.7 MB | ≥11.8 MB |
+| `mihomo_*_armv7_nokernel.tar.gz`（不含内核） | ≈2.0 MB | ≥4.1 MB |
+
+`nokernel` 版装完后，打开面板 → 设置 →「mihomo 内核」→ **检查更新**（自动从本仓库 fork 下载 7.9MB 内核）
+或手动上传内核文件。核心里程碑：[fanghengxuan/mihomo](https://github.com/fanghengxuan/mihomo) 的 `slim-*` Release。
 
 再不够就只能清理其它插件或用 USB2JFFS 扩容了。
 

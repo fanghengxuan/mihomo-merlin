@@ -20,4 +20,5 @@ echo ">>> 安装脚本冒烟"
 sh tools/build-cleanup-package.sh >/dev/null
 sh tests/cleanup_test.sh 2>&1 | tail -1
 sh tests/cleanup_pkg_test.sh 2>&1 | tail -1
+sh tests/nokernel_test.sh 2>&1 | tail -1
 sh tests/install_smoke.sh 2>&1 | tail -1

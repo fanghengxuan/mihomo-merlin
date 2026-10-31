@@ -7,6 +7,7 @@
 #   ./build.sh --no-download          # 只用本地缓存的内核与规则
 #   ./build.sh --dev                  # 额外编译一个本机（darwin/arm64）可跑的 panel，便于本地调试
 #   PANEL_UPX=1 ./build.sh            # 面板二进制用 UPX 压缩（jffs 紧张时用，解压后内存约 7MB）
+#   NOKERNEL=1 ./build.sh             # 不带内核（内核在面板「检查更新」里下载或手动上传）
 #
 # 面板用 Go 1.23 构建（go.mod 就是 1.23）：新版工具链会把二进制做大约 1.4MB，
 # 而软件中心要求 jffs 留 2MB 余量，容易导致「空间不足」装不上。
@@ -32,6 +33,9 @@ CACHE="$ROOT/.cache"
 DIST="$ROOT/dist"
 STAGE="$DIST/stage"
 PKG="mihomo_${VERSION}_armv7"
+if [ "${NOKERNEL:-0}" = "1" ]; then
+	PKG="mihomo_${VERSION}_armv7_nokernel"
+fi
 GO=${GO:-go}
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "缺少命令：$1"; exit 1; }; }
@@ -112,12 +116,17 @@ stage_package() {
 	cp -f "$ROOT"/plugin/scripts/* "$STAGE/mihomo/scripts/"
 	cp -f "$ROOT/plugin/webs/Module_mihomo.asp" "$STAGE/mihomo/webs/"
 	cp -f "$ROOT/plugin/res/icon-mihomo.png" "$STAGE/mihomo/res/"
-	cp -f "$KERNEL_BIN" "$STAGE/mihomo/bin/mihomo"
+	if [ "${NOKERNEL:-0}" = "1" ]; then
+		rm -f "$STAGE/mihomo/bin/mihomo"
+	else
+		cp -f "$KERNEL_BIN" "$STAGE/mihomo/bin/mihomo"
+	fi
 	cp -f "$CACHE/mihomo-panel-linux-armv7" "$STAGE/mihomo/bin/mihomo-panel"
 	cp -f "$CACHE/chnroute.txt" "$STAGE/mihomo/rules/chnroute.txt"
 	chmod 755 "$STAGE/mihomo/install.sh" "$STAGE/mihomo/uninstall.sh" "$STAGE/mihomo/scripts/"*.sh
 	chmod 644 "$STAGE/mihomo/version" "$STAGE/mihomo/.valid" "$STAGE/mihomo/webs/Module_mihomo.asp" "$STAGE/mihomo/res/icon-mihomo.png"
-	chmod 755 "$STAGE/mihomo/bin/mihomo" "$STAGE/mihomo/bin/mihomo-panel"
+	chmod 755 "$STAGE/mihomo/bin/mihomo-panel"
+	if [ -f "$STAGE/mihomo/bin/mihomo" ]; then chmod 755 "$STAGE/mihomo/bin/mihomo"; fi
 }
 
 pack() {
@@ -128,7 +137,12 @@ pack() {
 	echo "===================================================="
 	ls -lh "$DIST/$PKG.tar.gz"
 	cat "$DIST/$PKG.tar.gz.sha256"
-	echo "包内内核：$(wc -c < "$STAGE/mihomo/bin/mihomo") 字节  面板：$(wc -c < "$STAGE/mihomo/bin/mihomo-panel") 字节"
+	if [ -f "$STAGE/mihomo/bin/mihomo" ]; then
+		echo "包内内核：$(wc -c < "$STAGE/mihomo/bin/mihomo") 字节  面板：$(wc -c < "$STAGE/mihomo/bin/mihomo-panel") 字节"
+	else
+		echo "包内不含内核（安装后在面板「设置 → mihomo 内核 → 检查更新」下载，或手动上传）"
+		echo "面板：$(wc -c < "$STAGE/mihomo/bin/mihomo-panel") 字节"
+	fi
 	UNPACK_KB=$(du -sk "$STAGE" 2>/dev/null | awk '{print $1}')
 	NEED_KB=$(( UNPACK_KB + 2048 ))
 	echo "解压后占用： ${UNPACK_KB} KB（软件中心需 jffs ≥ ${NEED_KB} KB，含 2MB 预留）"
