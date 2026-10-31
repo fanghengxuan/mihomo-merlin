@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const panelVersion = "1.7.13"
+const panelVersion = "1.7.14"
 
 // panelPort 管理面板监听端口（插件安装脚本与 ASP 都按此端口访问）
 const panelPort = 9380
@@ -99,20 +99,21 @@ func main() {
 	}
 
 	// 自启：面板被 init.d 拉起时，若引擎此前处于启用状态则自动恢复
+	panicLogDir = app.dataDir
 	if app.settings.AutoStart && engineWanted(app.dataDir) {
-		go func() {
+		safeGo("auto-start-engine", func() {
 			time.Sleep(2 * time.Second)
 			if err := app.engine.Start(); err != nil {
 				log.Printf("自动启动引擎失败: %v", err)
 			}
-		}()
+		})
 	}
 
 	app.samples.Start()
 	app.hub.Start()
-	go app.ruleScheduler()
-	go app.restartScheduler()
-	go app.storageJanitor()
+	safeGo("rule-scheduler", app.ruleScheduler)
+	safeGo("restart-scheduler", app.restartScheduler)
+	safeGo("storage-janitor", app.storageJanitor)
 	app.CleanupStorage()
 
 	mux := http.NewServeMux()
@@ -152,6 +153,39 @@ func main() {
 	log.Print("收到退出信号，停止引擎…")
 	app.engine.Stop()
 	_ = app.engine.ClearIptables()
+}
+
+// safeGo 跑一个后台任务；panic 时记录堆栈但不让面板退出。
+// 之前这些任务没有 recover，一个 panic 就会让整个面板消失（表现为 9380 直接连不上）。
+func safeGo(name string, fn func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				buf := make([]byte, 1<<16)
+				n := runtime.Stack(buf, false)
+				msg := fmt.Sprintf("[%s] panic: %v\n%s", name, r, string(buf[:n]))
+				log.Printf("%s", msg)
+				if path := panicLogPath(); path != "" {
+					_ = os.MkdirAll(filepath.Dir(path), 0o755)
+					f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+					if err == nil {
+						fmt.Fprintf(f, "==== %s ====\n%s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
+						_ = f.Close()
+					}
+				}
+			}
+		}()
+		fn()
+	}()
+}
+
+var panicLogDir = ""
+
+func panicLogPath() string {
+	if panicLogDir == "" {
+		return ""
+	}
+	return filepath.Join(panicLogDir, "logs", "panic.log")
 }
 
 func resolveDataDir(explicit string) string {

@@ -40,6 +40,37 @@ find_pid_by_name() {
 }
 
 panel_pid() { find_pid_by_name mihomo-panel; }
+WATCH_PID="$DATA_DIR/panel-watchdog.pid"
+
+# 守护进程：面板挂了就拉起来（面板自己会按 enabled 标记决定是否启动内核）
+start_watchdog() {
+	wp=$(cat "$WATCH_PID" 2>/dev/null)
+	if [ -n "$wp" ] && kill -0 "$wp" 2>/dev/null; then
+		return 0
+	fi
+	(
+		while true; do
+			sleep 60
+			# 面板被显式停止（enabled 标记没了）就不再拉起，避免“停不掉”
+			[ -f "$DATA_DIR/enabled" ] || exit 0
+			if [ -z "$(panel_pid)" ]; then
+				echo "【$(TZ=UTC-8 date '+%Y%m%d %X')】看门狗：面板已退出，正在重新拉起" >>"$LOG_FILE"
+				if [ -x /sbin/start-stop-daemon ]; then
+					/sbin/start-stop-daemon -S -b -x "$PANEL_BIN" -- -listen ":$PORT" -data "$DATA_DIR" >>"$LOG_FILE" 2>&1
+				else
+					"$PANEL_BIN" -listen ":$PORT" -data "$DATA_DIR" >>"$LOG_FILE" 2>&1 &
+				fi
+			fi
+		done
+	) &
+	echo $! > "$WATCH_PID"
+}
+
+stop_watchdog() {
+	wp=$(cat "$WATCH_PID" 2>/dev/null)
+	[ -n "$wp" ] && kill "$wp" 2>/dev/null
+	rm -f "$WATCH_PID"
+}
 core_pid() { find_pid_by_name "/koolshare/bin/mihomo "; }
 
 start() {
@@ -67,7 +98,8 @@ start() {
 		i=$((i + 1))
 	done
 	if [ -n "$pid" ]; then
-		echo "面板已启动（pid $pid），端口 $PORT"
+		start_watchdog
+		echo "面板已启动（pid $pid），端口 $PORT（已启用 60 秒守护）"
 	else
 		echo "面板启动失败，请查看 $LOG_FILE"
 		return 1
@@ -95,6 +127,7 @@ cleanup_iptables() {
 }
 
 stop() {
+	stop_watchdog
 	pid=$(panel_pid)
 	if [ -n "$pid" ]; then
 		kill "$pid" 2>/dev/null

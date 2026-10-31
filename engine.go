@@ -108,7 +108,16 @@ func (e *Engine) Start() error {
 	e.mu.Unlock()
 
 	if err := e.app.WriteConfig(); err != nil {
-		return err
+		// 还没加订阅时生成不出完整配置。以前这里直接返回错误，用户看到的就是
+		// 「点击启动 → 校验失败」，还以为是内核坏了。改成用最小配置先把内核跑起来。
+		if strings.Contains(err.Error(), "还没有订阅") || strings.Contains(err.Error(), "没有可用的订阅") {
+			e.app.addLog("warning", "还没有订阅，内核将以最小配置启动（添加订阅后会自动重载）")
+			if werr := e.app.writeMinimalConfig(); werr != nil {
+				return werr
+			}
+		} else {
+			return err
+		}
 	}
 	if !fileExists(e.app.mihomoPath) {
 		return fmt.Errorf("找不到 mihomo 内核：%s", e.app.mihomoPath)
@@ -284,6 +293,24 @@ func (e *Engine) Restart() error {
 		return err
 	}
 	return nil
+}
+
+// writeMinimalConfig 在「还没有订阅」时写一份能让内核跑起来的最小配置。
+func (a *App) writeMinimalConfig() error {
+	s := a.settings
+	cfg := map[string]any{
+		"mixed-port":          s.MixedPort,
+		"redir-port":          s.RedirPort,
+		"allow-lan":           s.AllowLan,
+		"bind-address":        "*",
+		"mode":                s.Mode,
+		"log-level":           s.LogLevel,
+		"external-controller": "127.0.0.1:" + itoa(s.APIPort),
+		"secret":              s.ClashSecret,
+		"proxy-groups":        []any{},
+		"rules":               []any{"MATCH,DIRECT"},
+	}
+	return writeJSONAtomic(a.configPath(), cfg)
 }
 
 // Reload 重新生成配置并热重载；失败时退回重启。
