@@ -3,7 +3,7 @@
 set -eu
 
 PROJ=$(cd "$(dirname "$0")/.." && pwd)
-PKG=$(ls "$PROJ"/dist/mihomo_*_nokernel.tar.gz 2>/dev/null | head -1)
+PKG=$(ls "$PROJ"/dist/mihomo-merlin_*_koolshare_nokernel.tar.gz 2>/dev/null | head -1)
 [ -n "$PKG" ] || { echo "先跑 NOKERNEL=1 ./build.sh"; exit 1; }
 
 ROOT=$(mktemp -d /tmp/mm-nk.XXXXXX)

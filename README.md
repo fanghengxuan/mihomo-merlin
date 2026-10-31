@@ -25,7 +25,7 @@
 
 ## 快速开始
 
-1. 到 [Releases](https://github.com/fanghengxuan/mihomo-merlin/releases) 下载 `mihomo_<版本>_armv7.tar.gz`
+1. 到 [Releases](https://github.com/fanghengxuan/mihomo-merlin/releases) 下载 `mihomo-merlin_<版本>_armv7_koolshare.tar.gz`
 2. 路由器 → 软件中心 → 离线安装 → 选择该文件（安装完成后页面自动刷新）
 3. 浏览器打开 `http://<路由器IP>:9380`
 4. 「订阅」→「添加订阅」→ 粘贴机场链接 →「节点」选择分组与节点 →「概览」点电源按钮启动
@@ -121,7 +121,7 @@
 
 ### 3.1 软件中心离线安装（推荐）
 
-1. 下载 `mihomo_<版本>_armv7.tar.gz`。
+1. 下载 `mihomo-merlin_<版本>_armv7_koolshare.tar.gz`。
 2. 路由器后台 →「软件中心」→「离线安装」→ 选择该文件。
 3. 安装完成后打开 `http://<路由器IP>:9380`。
 
@@ -129,7 +129,7 @@
 
 ```sh
 # 把 tar.gz 传到路由器 /tmp 后：
-cd /tmp && tar -xzf mihomo_<版本>_armv7.tar.gz
+cd /tmp && tar -xzf mihomo-merlin_<版本>_armv7_koolshare.tar.gz
 sh /tmp/mihomo/install.sh
 ```
 
@@ -158,15 +158,18 @@ sh /tmp/mihomo/install.sh
    sh /tmp/mihomo-merlin/install.sh
    ```
 
-4. 安装到 `/jffs/mihomo-merlin`，同时写入 `/jffs/scripts/services-start` 与
-   `services-stop` 托管块；打开 `http://<路由器IP>:9380`。
+4. 安装到 `/jffs/mihomo-merlin`，同时写入 `/jffs/scripts/services-start`、
+   `services-stop`、`nat-start` 托管块；打开 `http://<路由器IP>:9380`。
 5. 卸载：`sh /jffs/mihomo-merlin/uninstall.sh [--keep-data]`。
+6. 固件升级后 `/jffs` 通常保留，但 Asus 的升级流程可能改动 `/jffs/scripts`；
+   升级完重新执行一次 `install.sh` 即可（钩子块幂等，不会重复叠加）。
 
 说明：
 
 - 仅支持 **armv7l**；TUF-AX3000 v1/v2 在 gnuton 3004 分支的支持列表内。
 - 没有软件中心菜单/卸载入口；升级时重新执行 `install.sh`，`data/` 下的订阅与设置会保留。
-- 面板自带看门狗会恢复内核与 iptables；开机后首次自动拉起约在 45 秒内。
+- `nat-start` 钩子会在防火墙重启 / WAN 重拨后即时重放转发规则；看门狗每 45 秒实测规则是否还在，作为兜底。
+- 面板启动时会按 `enabled` 标记自动拉起内核（前提是「开机自启」开启，且首次使用点过一次启动）。
 - 脚本层已用假根目录做安装/启动/停止/卸载冒烟测试，**尚未在 gnuton 真机验证**；
   上真机前建议先在测试环境确认。
 
@@ -213,7 +216,7 @@ WAN、NTP、DDNS 一起卷进去；`nat REDIRECT` 只作用于 `br0` 转发流�
 sh mihomo-cleanup.sh
 
 # 确认后真删，并判断空间够不够装
-sh mihomo-cleanup.sh --yes --need 18296
+sh mihomo-cleanup.sh --yes --need 18300
 ```
 
 脚本只处理本插件路径（数据目录、两个二进制、菜单页、图标、脚本、自启软链、`/tmp` 旧日志），
@@ -221,14 +224,9 @@ sh mihomo-cleanup.sh --yes --need 18296
 
 | 包 | tar.gz | 解压占用 | 需要 jffs |
 | --- | --- | --- | --- |
-| 默认（含内核） | 11 MB | 16.2 MB | ≥ 17.9 MB |
-| `PANEL_UPX=1` 重新构建 | 9.8 MB | 10.0 MB | ≥ 12.0 MB |
-| `NOKERNEL=1` 重新构建 | 3.4 MB | 8.4 MB | ≥ 10.4 MB |
+| 含内核（当前发布物） | 11 MB | 16.2 MB | ≥ 17.9 MB |
 
-> 当前 Release 提供默认包；`lite` / `nokernel` 可按 §10 在本地构建（需 Go；UPX 版还需要 `upx`）。
-> `PANEL_UPX=1` 会覆盖同名产物，建议先备份默认包。
-
-`nokernel` 版装完后，打开面板 →「设置 → 内核」→「检查更新」下载内核，或手动上传。
+如果清理后仍不够，可先换成更小的内核，或按 §10 自行裁剪包内容。
 内核 Release：[fanghengxuan/mihomo](https://github.com/fanghengxuan/mihomo) 的 `slim-*`。
 
 ## 6. 内核在线更新
@@ -306,19 +304,17 @@ mihomo-merlin/
 ## 10. 构建
 
 ```sh
-# 依赖：Go 1.23+（go.mod）、curl、tar、gzip；UPX 可选
+# 依赖：Go 1.23+（go.mod）、curl、tar、gzip
 cd mihomo-merlin
 GO=$HOME/go/bin/go ./build.sh                 # 完整包（含 slim 内核与 chnroute）
 ./build.sh --kernel /path/to/mihomo           # 用指定内核
 ./build.sh --no-download                      # 只用 .cache 里的内核/规则
 ./build.sh --dev                              # 额外编译本机可跑的 panel
-PANEL_UPX=1 ./build.sh                        # 面板 UPX 压缩（覆盖同名产物）
-NOKERNEL=1 ./build.sh                         # 不含内核
 ```
 
 产物在 `dist/`：
 
-- 软件中心：`mihomo_<版本>_armv7.tar.gz` + `.sha256`（`NOKERNEL=1` 时带 `_nokernel`）
+- 软件中心：`mihomo-merlin_<版本>_armv7_koolshare.tar.gz` + `.sha256`
 - Merlin：`mihomo-merlin_<版本>_armv7_merlin.tar.gz`，由 `tools/build-merlin-package.sh` 生成
 
 ## 11. 开发与测试

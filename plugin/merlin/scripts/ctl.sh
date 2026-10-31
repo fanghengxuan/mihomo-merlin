@@ -1,6 +1,6 @@
 #!/bin/sh
 # mihomo-merlin 控制脚本（Asuswrt-Merlin / gnuton，无软件中心）
-# 用法：ctl.sh {start|stop|restart|status}
+# 用法：ctl.sh {start|stop|restart|status|reapply}
 #
 # 面板自己负责内核启停与 iptables；本脚本只做进程托管和兜底清理。
 # MM_ROOT 仅用于测试（假根目录），路由器上不要设置。
@@ -146,6 +146,16 @@ case "${1:-}" in
 		sleep 1
 		"$0" start
 		;;
+	reapply)
+		# 供 nat-start 钩子调用：面板没在跑就什么都不做
+		panel_running || exit 0
+		url="http://127.0.0.1:$PORT/api/iptables/apply"
+		if command -v curl >/dev/null 2>&1; then
+			curl -fsS -m 3 -X POST "$url" >/dev/null 2>&1 || true
+		elif command -v wget >/dev/null 2>&1; then
+			wget -q -T 3 -O /dev/null --post-data='' "$url" >/dev/null 2>&1 || true
+		fi
+		;;
 	status)
 		if panel_running; then
 			echo "panel: running (pid $(cat "$PID"))"
@@ -157,7 +167,7 @@ case "${1:-}" in
 		[ -f "$DATA/enabled" ] && echo "enabled: yes" || echo "enabled: no"
 		;;
 	*)
-		echo "用法：$0 {start|stop|restart|status}"
+		echo "用法：$0 {start|stop|restart|status|reapply}"
 		exit 2
 		;;
 esac

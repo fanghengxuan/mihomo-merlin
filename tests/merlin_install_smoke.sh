@@ -106,7 +106,8 @@ ok "程序、数据目录与规则已落盘"
 grep -q "# >>> mihomo-merlin >>>" "$JFFS/scripts/services-start" || fail "services-start 缺少托管块"
 grep -q "$BASE/ctl.sh start" "$JFFS/scripts/services-start" || fail "services-start 未调用 ctl start"
 grep -q "$BASE/ctl.sh stop" "$JFFS/scripts/services-stop" || fail "services-stop 未调用 ctl stop"
-ok "services-start / services-stop 钩子已写入"
+grep -q "$BASE/ctl.sh reapply" "$JFFS/scripts/nat-start" || fail "nat-start 未调用 ctl reapply"
+ok "services-start / services-stop / nat-start 钩子已写入"
 
 [ -f "$BASE/data/panel.pid" ] || fail "面板未启动（缺少 pid 文件）"
 PID=$(cat "$BASE/data/panel.pid")
@@ -124,6 +125,8 @@ fi
 	|| fail "services-start 托管块重复"
 [ "$(grep -c '# >>> mihomo-merlin >>>' "$JFFS/scripts/services-stop")" = "1" ] \
 	|| fail "services-stop 托管块重复"
+[ "$(grep -c '# >>> mihomo-merlin >>>' "$JFFS/scripts/nat-start")" = "1" ] \
+	|| fail "nat-start 托管块重复"
 ok "重复安装不会叠加钩子"
 
 # ---------- 停止 ----------
@@ -143,6 +146,7 @@ run "$BASE/uninstall.sh" >"$ROOT/uninstall.log" 2>&1 || fail "卸载失败"
 [ ! -d "$BASE" ] || fail "数据目录未删除"
 grep -q "# >>> mihomo-merlin >>>" "$JFFS/scripts/services-start" && fail "services-start 钩子未清理"
 grep -q "# >>> mihomo-merlin >>>" "$JFFS/scripts/services-stop" && fail "services-stop 钩子未清理"
+grep -q "# >>> mihomo-merlin >>>" "$JFFS/scripts/nat-start" && fail "nat-start 钩子未清理"
 ok "程序、数据与 hooks 已清理"
 
 # ---------- 保留数据卸载 ----------

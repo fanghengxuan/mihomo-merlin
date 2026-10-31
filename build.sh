@@ -32,9 +32,9 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 CACHE="$ROOT/.cache"
 DIST="$ROOT/dist"
 STAGE="$DIST/stage"
-PKG="mihomo_${VERSION}_armv7"
+PKG="mihomo-merlin_${VERSION}_armv7_koolshare"
 if [ "${NOKERNEL:-0}" = "1" ]; then
-	PKG="mihomo_${VERSION}_armv7_nokernel"
+	PKG="${PKG}_nokernel"
 fi
 GO=${GO:-go}
 
@@ -113,6 +113,7 @@ stage_package() {
 	cp -f "$ROOT/plugin/version" "$STAGE/mihomo/"
 	# 软件中心靠这个标记判断离线包是不是 hnd 平台，缺了会直接拒绝安装
 	printf 'hnd\n' > "$STAGE/mihomo/.valid"
+	printf 'armv7l\n' > "$STAGE/mihomo/arch"
 	cp -f "$ROOT"/plugin/scripts/* "$STAGE/mihomo/scripts/"
 	cp -f "$ROOT/plugin/webs/Module_mihomo.asp" "$STAGE/mihomo/webs/"
 	cp -f "$ROOT/plugin/res/icon-mihomo.png" "$STAGE/mihomo/res/"
@@ -124,7 +125,7 @@ stage_package() {
 	cp -f "$CACHE/mihomo-panel-linux-armv7" "$STAGE/mihomo/bin/mihomo-panel"
 	cp -f "$CACHE/chnroute.txt" "$STAGE/mihomo/rules/chnroute.txt"
 	chmod 755 "$STAGE/mihomo/install.sh" "$STAGE/mihomo/uninstall.sh" "$STAGE/mihomo/scripts/"*.sh
-	chmod 644 "$STAGE/mihomo/version" "$STAGE/mihomo/.valid" "$STAGE/mihomo/webs/Module_mihomo.asp" "$STAGE/mihomo/res/icon-mihomo.png"
+	chmod 644 "$STAGE/mihomo/version" "$STAGE/mihomo/.valid" "$STAGE/mihomo/arch" "$STAGE/mihomo/webs/Module_mihomo.asp" "$STAGE/mihomo/res/icon-mihomo.png"
 	chmod 755 "$STAGE/mihomo/bin/mihomo-panel"
 	if [ -f "$STAGE/mihomo/bin/mihomo" ]; then chmod 755 "$STAGE/mihomo/bin/mihomo"; fi
 }

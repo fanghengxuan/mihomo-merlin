@@ -94,6 +94,27 @@ func (e *Engine) Applied() bool {
 	return e.applied
 }
 
+// rulesPresent 实测 nat 表里的跳转与 REDIRECT 规则是否还在。
+// applied 只是内存状态：防火墙重启会清掉链，但不会通知面板；
+// 看门狗必须实测，否则永远不会发现规则被重置。
+func (e *Engine) rulesPresent() bool {
+	if os.Getenv("MM_NO_IPTABLES") == "1" {
+		return true
+	}
+	e.app.mu.RLock()
+	s := e.app.settings
+	e.app.mu.RUnlock()
+	lanIf := s.LanIf
+	if lanIf == "" {
+		lanIf = "br0"
+	}
+	if err := e.ipt("-t", "nat", "-C", "PREROUTING", "-i", lanIf, "-j", "MIHOMO"); err != nil {
+		return false
+	}
+	return e.ipt("-t", "nat", "-C", "MIHOMO", "-p", "tcp", "-j", "REDIRECT",
+		"--to-ports", itoa(s.RedirPort)) == nil
+}
+
 func (e *Engine) LastApply() int64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -459,7 +480,7 @@ func (e *Engine) startWatchdog() {
 				case <-e.stopWatch:
 					return
 				case <-t.C:
-					if e.Running() && !e.Applied() {
+					if e.Running() && !e.rulesPresent() {
 						if err := e.ApplyIptables(); err != nil {
 							e.app.addLog("warning", "转发规则被重置，恢复失败："+err.Error())
 						} else {

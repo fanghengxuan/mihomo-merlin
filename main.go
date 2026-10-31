@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -330,6 +331,12 @@ func (a *App) withAuth(next http.Handler) http.Handler {
 			return
 		}
 		p := r.URL.Path
+		// 防火墙钩子（nat-start）需要在没有面板密码的情况下即时重放规则；
+		// 只允许本机回环调用，对外仍要求登录。
+		if p == "/api/iptables/apply" && isLoopback(r.RemoteAddr) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if p == "/api/login" || p == "/api/status" || !strings.HasPrefix(p, "/api/") {
 			next.ServeHTTP(w, r)
 			return
@@ -347,6 +354,15 @@ func (a *App) withAuth(next http.Handler) http.Handler {
 	})
 }
 
+func isLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
 func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/status", a.handleStatus)
 	mux.HandleFunc("POST /api/login", a.handleLogin)
@@ -358,6 +374,8 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/engine/restart", a.handleEngineRestart)
 	mux.HandleFunc("POST /api/engine/reload", a.handleEngineReload)
 	mux.HandleFunc("POST /api/config/reload", a.handleEngineReload)
+	// 仅供本机防火墙钩子调用（withAuth 内单独放行回环地址）
+	mux.HandleFunc("POST /api/iptables/apply", a.handleIptablesApply)
 
 	mux.HandleFunc("GET /api/subs", a.handleListSubs)
 	mux.HandleFunc("POST /api/subs", a.handleCreateSub)

@@ -27,11 +27,10 @@ mm_log "================================================"
 [ -d "$JFFS" ] || fail "未检测到 /jffs。Merlin 固件需要在「系统管理 → 系统设置」里启用 JFFS。"
 [ -x "$DIR/bin/mihomo-panel" ] || fail "安装包缺少 bin/mihomo-panel"
 
-case "$(uname -m)" in
-	armv7l) : ;;
-	aarch64) fail "当前是 aarch64，本包为 32 位 ARM。请改用 arm64 版本。" ;;
-	*) fail "不支持的架构：$(uname -m)（本包仅支持 armv7l）" ;;
-esac
+ARCH=$(uname -m)
+PKG_ARCH=$(cat "$DIR/arch" 2>/dev/null)
+[ -n "$PKG_ARCH" ] || PKG_ARCH=armv7l
+[ "$ARCH" = "$PKG_ARCH" ] || fail "本安装包是 ${PKG_ARCH} 架构，当前设备是 ${ARCH}。请换对应架构的安装包。"
 
 SCRIPTS_ON=$(nvram get jffs2_scripts 2>/dev/null || echo "")
 if [ "$SCRIPTS_ON" != "1" ]; then
@@ -110,9 +109,10 @@ install_hook() {
 	chmod a+rx "$file"
 }
 
-mm_log "配置开机自启"
+mm_log "配置开机自启与防火墙钩子"
 install_hook "$SCRIPTS/services-start" start
 install_hook "$SCRIPTS/services-stop" stop
+install_hook "$SCRIPTS/nat-start" reapply
 
 mm_log "启动面板"
 "$BASE/ctl.sh" start || fail "面板启动失败，查看 $DATA/logs/panel.log"

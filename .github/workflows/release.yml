@@ -31,14 +31,21 @@ jobs:
           chmod +x build.sh
           ./build.sh 2>&1 | tail -20
 
+      - name: 构建 Merlin 原生安装包
+        run: |
+          chmod +x tools/build-merlin-package.sh
+          ./tools/build-merlin-package.sh 2>&1 | tail -20
+
       - name: 产出校验值
         run: |
-          cd dist && ls -l && sha256sum mihomo_*.tar.gz > mihomo_*.sha256 && cat *.sha256
+          cd dist && ls -l
+          for f in mihomo-merlin_*.tar.gz; do sha256sum "$f" > "$f.sha256"; done
+          cat *.sha256
 
       - uses: actions/upload-artifact@v4
         with:
           name: package-${{ inputs.version }}
-          path: dist/mihomo_*
+          path: dist/mihomo-merlin_*
 
       - name: 附加到 Release
         if: ${{ inputs.attach }}
@@ -49,4 +56,9 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --title "$tag" --notes "由 CI 构建的安装包"
           fi
-          gh release upload "$tag" dist/mihomo_${{ inputs.version }}_armv7.tar.gz dist/mihomo_${{ inputs.version }}_armv7.tar.gz.sha256 --clobber
+          gh release upload "$tag" \
+            "dist/mihomo-merlin_${{ inputs.version }}_armv7_koolshare.tar.gz" \
+            "dist/mihomo-merlin_${{ inputs.version }}_armv7_koolshare.tar.gz.sha256" \
+            "dist/mihomo-merlin_${{ inputs.version }}_armv7_merlin.tar.gz" \
+            "dist/mihomo-merlin_${{ inputs.version }}_armv7_merlin.tar.gz.sha256" \
+            --clobber

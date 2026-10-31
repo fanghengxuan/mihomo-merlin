@@ -31,9 +31,10 @@ remove_hook() {
 	rm -f "$tmp"
 }
 
-mm_log "清理开机自启"
+mm_log "清理开机自启与防火墙钩子"
 remove_hook "$SCRIPTS/services-start"
 remove_hook "$SCRIPTS/services-stop"
+remove_hook "$SCRIPTS/nat-start"
 
 # 兜底清理 iptables（正常情况下 ctl stop / 面板退出时已经清过）
 if command -v iptables >/dev/null 2>&1; then

@@ -53,15 +53,9 @@ if [ -z "$DBUS" ]; then
 	DBUS=$(command -v dbus 2>/dev/null)
 fi
 
-case "$ARCH" in
-	armv7l) : ;;
-	aarch64)
-		fail "当前是 aarch64 架构，本包内置的是 32 位 ARM 程序。请改用 arm64 版本的安装包。"
-		;;
-	*)
-		fail "不支持的架构：${ARCH}（本包仅支持 armv7l）"
-		;;
-esac
+PKG_ARCH=$(cat "$DIR/arch" 2>/dev/null)
+[ -n "$PKG_ARCH" ] || PKG_ARCH=armv7l
+[ "$ARCH" = "$PKG_ARCH" ] || fail "本安装包是 ${PKG_ARCH} 架构，当前设备是 ${ARCH}。请换对应架构的安装包。"
 
 case "$KERN" in
 	4.1|4.19) mm_log "内核版本 ${KERN} 在支持范围内" ;;

@@ -4,9 +4,13 @@
 
 - 新增 **Asuswrt-Merlin（gnuton 等，无软件中心）原生安装器**：
   `plugin/merlin/`、`tools/build-merlin-package.sh`、`tests/merlin_install_smoke.sh`
-- 安装到 `/jffs/mihomo-merlin`，自动维护 `/jffs/scripts/services-start` 与 `services-stop`
-- 支持 `NOKERNEL=1`、`PANEL_UPX=1`、`--keep-data` 卸载；仅支持 armv7l
+- 安装到 `/jffs/mihomo-merlin`，自动维护 `/jffs/scripts/services-start`、`services-stop`、`nat-start`
+- 安装包按固件命名区分：`mihomo-merlin_<版本>_armv7_koolshare.tar.gz` 与 `mihomo-merlin_<版本>_armv7_merlin.tar.gz`
+- **修复看门狗不恢复防火墙规则**：不再依赖内存里的 `applied`，每 45 秒用 `iptables -C` 实测；
+  新增本机回环端点 `POST /api/iptables/apply`，Merlin 的 `nat-start` 可即时重放
+- 卸载改为从 `nvram get lan_ifname` 取 LAN 接口；安装包新增 `arch` 文件，安装器按包内架构校验
 - 脚本层冒烟测试通过，尚未在 gnuton 真机验证
+- nokernel / lite 不再作为发布物
 
 ## 2.0.0（2026-10-31）
 

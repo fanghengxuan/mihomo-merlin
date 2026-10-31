@@ -66,6 +66,7 @@ cp -f "$ROOT/plugin/merlin/install.sh" "$STAGE/install.sh"
 cp -f "$ROOT/plugin/merlin/uninstall.sh" "$STAGE/uninstall.sh"
 cp -f "$ROOT/plugin/merlin/scripts/ctl.sh" "$STAGE/scripts/ctl.sh"
 cp -f "$ROOT/plugin/version" "$STAGE/version"
+printf 'armv7l\n' > "$STAGE/arch"
 chmod 755 "$STAGE/install.sh" "$STAGE/uninstall.sh" "$STAGE/scripts/ctl.sh" "$STAGE/bin/mihomo-panel"
 
 echo ">>> 打包 $PKG.tar.gz"

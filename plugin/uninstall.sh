@@ -43,10 +43,12 @@ killall -q -9 mihomo-panel 2>/dev/null
 killall -q -9 mihomo 2>/dev/null
 
 mm_log "清理 iptables 规则（含 DNS/QUIC/MSS）"
+LANIF=$(nvram get lan_ifname 2>/dev/null)
+[ -n "$LANIF" ] || LANIF=br0
 # nat：透明代理链（多次删除，防止重复插入的残留）
 i=0
 while [ $i -lt 5 ]; do
-	iptables -t nat -D PREROUTING -i br0 -j MIHOMO 2>/dev/null || break
+	iptables -t nat -D PREROUTING -i "$LANIF" -j MIHOMO 2>/dev/null || break
 	i=$((i + 1))
 done
 iptables -t nat -F MIHOMO 2>/dev/null

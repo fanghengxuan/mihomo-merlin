@@ -312,6 +312,16 @@ func (a *App) handleEngineRestart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, okBody(map[string]any{"message": "已重启"}))
 }
 
+// handleIptablesApply 重放转发规则，供 Merlin 的 nat-start 钩子即时调用。
+// 鉴权由 withAuth 处理：只放行回环地址，其余请求仍需登录。
+func (a *App) handleIptablesApply(w http.ResponseWriter, r *http.Request) {
+	if err := a.engine.ApplyIptables(); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
 func (a *App) handleEngineReload(w http.ResponseWriter, r *http.Request) {
 	if err := a.appReload(); err != nil {
 		writeErr(w, 500, err.Error())
