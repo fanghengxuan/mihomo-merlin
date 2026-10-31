@@ -67,6 +67,14 @@ echo "iptables \$*" >> "$ROOT/iptables.log"
 exit 0
 EOF
 
+# killall：macOS 没有该命令（BusyBox 有），给个桩避免卸载脚本报错
+cat > "$STUB/killall" <<'EOF'
+#!/bin/sh
+# 忽略 -q/-9 等选项，直接成功
+exit 0
+EOF
+chmod +x "$STUB/killall"
+
 # pidof：从 pid 文件读，模拟「进程存在」
 cat > "$STUB/pidof" <<EOF
 #!/bin/sh
@@ -196,15 +204,19 @@ cat "$ROOT/uninstall.log"
 [ ! -L "$KS/init.d/S99mihomo.sh" ] || fail "自启软链未删除"
 ok "程序文件、菜单页、自启软链均已清理"
 
-[ -d "$KS/mihomo" ] || fail "数据目录被误删（应保留订阅）"
-ok "订阅数据目录按设计保留：$KS/mihomo"
+[ ! -d "$KS/mihomo" ] || fail "数据目录未删除（卸载应释放空间）"
+ok "数据目录已彻底删除（含订阅/节点/规则/内核备份/日志）"
 
 grep -q "softcenter_module_mihomo_install" "$ROOT/dbus.log" && grep -q "dbus remove softcenter_module_mihomo_install" "$ROOT/dbus.log" \
 	|| fail "dbus 登记未清理"
 ok "dbus 菜单登记已清理"
 
 grep -q "iptables -t nat -D PREROUTING" "$ROOT/iptables.log" || fail "卸载时没有清理转发规则（残留会断网）"
-ok "卸载时执行了 iptables 清理"
+grep -q "iptables -t mangle -D FORWARD" "$ROOT/iptables.log" || fail "卸载时没有清理 MSS 钳制规则"
+ok "卸载时执行了 iptables 清理（nat / filter / mangle）"
+
+grep -q "已释放" "$ROOT/uninstall.log" || fail "卸载脚本应报告释放的空间"
+ok "卸载脚本报告了释放空间：$(grep -o '已释放[^】]*' "$ROOT/uninstall.log" | head -1)"
 
 # 收尾
 [ -f "$ROOT/panel.pid" ] && kill "$(cat "$ROOT/panel.pid")" 2>/dev/null || true
