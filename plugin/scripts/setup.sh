@@ -100,11 +100,38 @@ for f in mihomo mihomo-panel; do
 done
 [ -n "$OLD_BACKUP" ] && mm_log "已把旧程序搬到 /tmp 暂存（安装完成后删除）：$OLD_BACKUP"
 
+# 再把「内核备份」挪走：老版本每次升级都会留一份 7.9MB 的内核备份，
+# 最多 3 份 ≈ 24MB，是 jffs 里最大的可回收对象（我们马上要装新内核，旧备份只会占地方）
+if [ -d /koolshare/mihomo/kernel ]; then
+	OLD_KB=$(du -sk /koolshare/mihomo/kernel 2>/dev/null | awk '{print $1}')
+	if [ "${OLD_KB:-0}" -gt 1024 ]; then
+		if mv /koolshare/mihomo/kernel "/tmp/.mm-old-kernel.$$" 2>/dev/null; then
+			mm_log "已把旧内核备份（${OLD_KB}KB）搬到 /tmp 暂存"
+			OLD_BACKUP="$OLD_BACKUP kernel"
+		else
+			rm -rf /koolshare/mihomo/kernel 2>/dev/null && mm_log "已删除旧内核备份（${OLD_KB}KB）"
+		fi
+	fi
+fi
+
+# 日志截断：有的机器 panel.log 长到几 MB
+for lf in /koolshare/mihomo/logs/*.log; do
+	[ -f "$lf" ] || continue
+	sz=$(wc -c < "$lf" 2>/dev/null || echo 0)
+	if [ "${sz:-0}" -gt 262144 ]; then
+		tail -c 131072 "$lf" > "$lf.tmp" 2>/dev/null && mv -f "$lf.tmp" "$lf" 2>/dev/null && mm_log "已截断日志 $lf（原 ${sz} 字节）"
+	fi
+done
+
 FREE_NOW=$(df -k /koolshare 2>/dev/null | awk 'NR==2 {print $4}')
 mm_log "安装前 jffs 剩余：${FREE_NOW:-未知}KB"
 restore_old() {
 	for f in $OLD_BACKUP; do
-		[ -e "/tmp/.mm-old-$f.$$" ] && mv -f "/tmp/.mm-old-$f.$$" "/koolshare/bin/$f" 2>/dev/null
+		if [ "$f" = "kernel" ]; then
+			[ -d "/tmp/.mm-old-kernel.$$" ] && mv "/tmp/.mm-old-kernel.$$" /koolshare/mihomo/kernel 2>/dev/null
+		else
+			[ -e "/tmp/.mm-old-$f.$$" ] && mv -f "/tmp/.mm-old-$f.$$" "/koolshare/bin/$f" 2>/dev/null
+		fi
 	done
 }
 install_file "${DIR}/bin/mihomo" /koolshare/bin/mihomo || { restore_old; fail "复制 mihomo 失败（jffs 空间不足或文件被占用）"; }
@@ -121,7 +148,13 @@ mm_log "  内核：$(head -1 /tmp/mihomo_kver)"
 PANEL_VER=$(/koolshare/bin/mihomo-panel -v 2>&1 | head -1)
 [ -n "$PANEL_VER" ] || fail "面板程序自检失败"
 # 自检通过后再清掉 /tmp 里的旧程序备份（失败时会自动挪回）
-for f in $OLD_BACKUP; do rm -f "/tmp/.mm-old-$f.$$" 2>/dev/null; done
+for f in $OLD_BACKUP; do
+	if [ "$f" = "kernel" ]; then
+		rm -rf "/tmp/.mm-old-kernel.$$" 2>/dev/null
+	else
+		rm -f "/tmp/.mm-old-$f.$$" 2>/dev/null
+	fi
+done
 mm_log "  ${PANEL_VER}"
 
 mm_log "安装国内 IP 规则文件"
