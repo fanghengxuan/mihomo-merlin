@@ -137,8 +137,11 @@ for f in "$ROOT/pkg/mihomo/install.sh" "$ROOT/pkg/mihomo/uninstall.sh" "$ROOT/pk
 	sed -i '' -e "s#/koolshare#$KS#g" "$f" 2>/dev/null || sed -i -e "s#/koolshare#$KS#g" "$f"
 done
 
-# ---------- 跑安装 ----------
-echo "=== 安装 ==="
+# ---------- 模拟已装旧版本：目标文件已存在，安装必须能覆盖 ----------
+echo "=== 安装（覆盖已存在的旧文件）==="
+echo "OLD-KERNEL" > "$KS/bin/mihomo"
+echo "OLD-PANEL" > "$KS/bin/mihomo-panel"
+mkdir -p "$KS/mihomo" && echo "old setting" > "$KS/mihomo/settings.json"
 cp -f "$STUB"/* "$KS/bin/" 2>/dev/null || true
 MM_PAYLOAD_KB=14644 run_sh "$ROOT/pkg/mihomo/install.sh" > "$ROOT/install.log" 2>&1 || {
 	if false; then :; fi
@@ -159,7 +162,8 @@ grep -q '\. /koolshare/scripts/base.sh' "$ROOT/pkg/mihomo/install.sh" \
 ok "install.sh 会 source base.sh（取 dbus 等固件函数）"
 
 [ -x "$KS/bin/mihomo" ] || fail "内核未安装"
-ok "内核已安装到 $KS/bin/mihomo"
+ok "内核已安装到 $KS/bin/mihomo（覆盖旧文件成功）"
+grep -q "OLD-KERNEL" "$KS/bin/mihomo" && fail "旧内核未被覆盖（busybox cp 覆盖问题回归）"
 
 [ -x "$KS/bin/mihomo-panel" ] || fail "面板未安装"
 ok "面板已安装"

@@ -29,10 +29,64 @@ done
 mkdir -p /koolshare/bin /koolshare/webs /koolshare/res /koolshare/scripts /koolshare/init.d
 mkdir -p /koolshare/mihomo/providers /koolshare/mihomo/rules /koolshare/mihomo/logs
 
+# install_file 源 目标：先写同目录临时文件再 rename 覆盖。
+# 原因：部分固件的 busybox cp 在目标已存在时会报 "can't create ... File exists"，
+# 而且正在运行的二进制不能被 open 覆盖（ETXTBSY），但 rename 替换是允许的。
+install_file() {
+	src=$1
+	dst=$2
+	dir=$(dirname "$dst")
+	base=$(basename "$dst")
+	tmp="$dir/.${base}.new.$$"
+
+	rm -f "$tmp" 2>/dev/null
+	if ! cat "$src" > "$tmp" 2>/tmp/mm_cp.err; then
+		# cat 也失败时退回 cp
+		if ! cp -f "$src" "$tmp" 2>/tmp/mm_cp.err; then
+			mm_log "写入临时文件失败：$(cat /tmp/mm_cp.err 2>/dev/null)"
+			rm -f "$tmp" 2>/dev/null
+			return 1
+		fi
+	fi
+	chmod 755 "$tmp" 2>/dev/null
+
+	if mv -f "$tmp" "$dst" 2>/tmp/mm_mv.err; then
+		return 0
+	fi
+
+	# 兜底：先把旧文件挪走（改名对运行中的程序也有效），再放新文件
+	if [ -e "$dst" ]; then
+		mv -f "$dst" "${dst}.old.$$" 2>/dev/null && rm -f "${dst}.old.$$" 2>/dev/null
+	fi
+	if mv -f "$tmp" "$dst" 2>>/tmp/mm_mv.err; then
+		return 0
+	fi
+
+	mm_log "替换 $dst 失败：$(cat /tmp/mm_mv.err 2>/dev/null | tail -1)"
+	rm -f "$tmp" 2>/dev/null
+	return 1
+}
+
+# 再彻底停一次：旧面板/内核若还在跑，会占着 /koolshare/bin 下的二进制
+killall -q mihomo-panel 2>/dev/null
+killall -q mihomo 2>/dev/null
+i=0
+while [ $i -lt 5 ]; do
+	if pidof mihomo >/dev/null 2>&1 || pidof mihomo-panel >/dev/null 2>&1; then
+		sleep 1
+		i=$((i + 1))
+	else
+		break
+	fi
+done
+killall -q -9 mihomo-panel 2>/dev/null
+killall -q -9 mihomo 2>/dev/null
+mkdir -p /koolshare/bin
+
 mm_log "复制 mihomo 内核与面板程序，请稍候"
-cp -f "${DIR}/bin/mihomo" /koolshare/bin/mihomo || fail "复制 mihomo 失败"
-cp -f "${DIR}/bin/mihomo-panel" /koolshare/bin/mihomo-panel || fail "复制面板失败"
-chmod 755 /koolshare/bin/mihomo /koolshare/bin/mihomo-panel
+install_file "${DIR}/bin/mihomo" /koolshare/bin/mihomo || fail "复制 mihomo 失败（目标文件可能被占用或只读）"
+install_file "${DIR}/bin/mihomo-panel" /koolshare/bin/mihomo-panel || fail "复制面板失败（目标文件可能被占用或只读）"
+chmod 755 /koolshare/bin/mihomo /koolshare/bin/mihomo-panel 2>/dev/null
 
 # 内核自检：架构不对 / 文件损坏时立刻中止，避免装完变砖
 if ! /koolshare/bin/mihomo -v >/tmp/mihomo_kver 2>&1; then
