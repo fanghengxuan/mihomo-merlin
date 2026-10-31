@@ -121,6 +121,25 @@ func (e *Engine) LastApply() int64 {
 	return e.lastApply
 }
 
+// ensureOvercommit 处理 gnuton/Merlin 默认的 vm.overcommit_memory=2。
+// 严格 overcommit 下，slim 内核的 Go 运行时会在启动阶段报
+// "runtime: out of memory"；koolshare 固件默认是 0，所以此前没暴露。
+func (e *Engine) ensureOvercommit() {
+	const p = "/proc/sys/vm/overcommit_memory"
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	if strings.TrimSpace(string(b)) != "2" {
+		return
+	}
+	if err := os.WriteFile(p, []byte("0\n"), 0o644); err != nil {
+		e.app.addLog("warning", "vm.overcommit_memory=2，调整失败，内核可能无法启动："+err.Error())
+		return
+	}
+	e.app.addLog("info", "已将 vm.overcommit_memory 从 2 调整为 0（slim 内核启动需要）")
+}
+
 func (e *Engine) rotateLog() {
 	p := e.app.logPath()
 	if fi, err := os.Stat(p); err == nil && fi.Size() > 2<<20 {
@@ -143,6 +162,8 @@ func (e *Engine) startLocked() error {
 		return nil
 	}
 	e.mu.Unlock()
+
+	e.ensureOvercommit()
 
 	if err := e.app.WriteConfig(); err != nil {
 		// 还没加订阅时生成不出完整配置。以前这里直接返回错误，用户看到的就是

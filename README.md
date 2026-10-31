@@ -7,7 +7,7 @@
 **给华硕梅林（koolshare 软件中心）路由器用的 mihomo 代理插件**：内核用 [mihomo](https://github.com/MetaCubeX/mihomo)，
 自带一个 FlClash 风格的 Web 面板，打包成软件中心可直接离线安装的 `tar.gz`。
 
-> 在 **TUF-AX3000 / axhnd.675x（armv7，内核 4.1）** + `3.0.0.4.388_25525_koolshare` 上实测通过（v2.0.0；2.0.1 为增量修复）。
+> 在 **TUF-AX3000 / axhnd.675x（armv7，内核 4.1）** 上实测通过：koolshare 版 v2.0.0，gnuton/Merlin 版 v2.0.2。
 > 同代 axhnd 机型（RT-AX58U / RT-AX3000 / RT-AX56U 等）通常同样适用。
 
 **能力**：订阅管理（链接 / 粘贴导入 / 正则过滤）· 节点分组与测速 · 规则 / 全局 / 直连三种模式 ·
@@ -172,6 +172,7 @@ sh /tmp/mihomo/install.sh
 - 面板启动时会按 `enabled` 标记自动拉起内核（前提是「开机自启」开启，且首次使用点过一次启动）。
 - 日志与内核备份放在 `/tmp/mihomo`（重启清空），不占 jffs；重启后上一版内核备份不再可回滚。
 - 升级时先把旧二进制和内核备份移到 `/tmp`，峰值只保留一份新文件，适配 26 MB 级 jffs。
+- gnuton 默认 `vm.overcommit_memory=2`，slim 内核会启动失败；面板在启动内核前会自动调整为 0。
 - 脚本层已用假根目录做安装/启动/停止/卸载冒烟测试，**尚未在 gnuton 真机验证**；
   上真机前建议先在测试环境确认。
 
@@ -368,4 +369,4 @@ MM_DATA_DIR=/tmp/mmdata MM_MIHOMO=$(command -v mihomo) MM_NO_IPTABLES=1 \
 
 ## 更新记录
 
-见 [CHANGELOG.md](CHANGELOG.md)。当前版本 **2.0.1**：面板重构 + 稳定性与 Merlin 安装修复。
+见 [CHANGELOG.md](CHANGELOG.md)。当前版本 **2.0.2**：面板重构 + 稳定性与 Merlin 安装修复。

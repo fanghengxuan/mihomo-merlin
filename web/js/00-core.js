@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var MM = window.MM = window.MM || {};
-  MM.VERSION = '2.0.1';
+  MM.VERSION = '2.0.2';
 
   MM.$ = function (sel, root) { return (root || document).querySelector(sel); };
   MM.$$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };

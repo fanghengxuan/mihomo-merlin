@@ -1,5 +1,11 @@
 # 更新记录
 
+## 2.0.2（2026-11-01）
+
+- 修复 gnuton/Merlin 默认 `vm.overcommit_memory=2` 导致 slim 内核启动时报
+  `runtime: out of memory`；引擎启动前自动调整为 0（koolshare 默认已是 0）
+- 修复 Merlin `ctl status/stop` 把 `mihomo-panel` 误判为内核（改为完整路径匹配）
+
 ## 2.0.1（2026-11-01）
 
 - 新增 **Asuswrt-Merlin（gnuton 等，无软件中心）原生安装器**：

@@ -56,8 +56,9 @@ find_pid_by_path() {
 	for d in /proc/[0-9]*; do
 		[ -r "$d/cmdline" ] || continue
 		cmd=$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null)
+		# 必须匹配完整路径 + 空格，避免把 mihomo-panel 当成 mihomo
 		case "$cmd" in
-			*"$want"*) echo "${d#/proc/}"; return 0 ;;
+			"$want" | "$want "*) echo "${d#/proc/}"; return 0 ;;
 		esac
 	done
 	return 1
