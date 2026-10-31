@@ -17,4 +17,5 @@ MM_MIHOMO="$MIHOMO" MM_NO_IPTABLES=1 "$GO" test -run 'TestEndToEndWithRealCore|T
 	| grep -E "✓|FAIL|PASS|ok " | sed 's/^ *//'
 
 echo ">>> 安装脚本冒烟"
+sh tests/cleanup_test.sh 2>&1 | tail -1
 sh tests/install_smoke.sh 2>&1 | tail -1
